@@ -350,48 +350,48 @@ def render_patient_dashboard():
         # Vital Signs
         st.markdown('<div class="section-header">⚡ Vital Signs</div>', unsafe_allow_html=True)
         v1, v2, v3 = st.columns(3)
-        heart_rate = v1.number_input("Heart Rate (bpm)", 60.0, 100.0, 70.0, key="hr")
-        sbp = v2.number_input("Systolic BP (mmHg)", 90.0, 120.0, 110.0, key="sbp")
-        dbp = v3.number_input("Diastolic BP (mmHg)", 60.0, 80.0, 70.0, key="dbp")
+        heart_rate = v1.number_input("Heart Rate (bpm)", value=70.0, key="hr")
+        sbp = v2.number_input("Systolic BP (mmHg)", value=110.0, key="sbp")
+        dbp = v3.number_input("Diastolic BP (mmHg)", value=70.0, key="dbp")
 
         # Blood Chemistry
         st.markdown('<div class="section-header">🧪 Blood Chemistry</div>', unsafe_allow_html=True)
         b1, b2, b3 = st.columns(3)
-        glucose = b1.number_input("Glucose (mg/dL)", 70.0, 140.0, 90.0)
-        cholesterol = b2.number_input("Cholesterol (mg/dL)", 125.0, 200.0, 150.0)
-        triglycerides = b3.number_input("Triglycerides (mg/dL)", 50.0, 150.0, 100.0)
+        glucose = b1.number_input("Glucose (mg/dL)", value=90.0)
+        cholesterol = b2.number_input("Cholesterol (mg/dL)", value=150.0)
+        triglycerides = b3.number_input("Triglycerides (mg/dL)", value=100.0)
 
         b4, b5, b6 = st.columns(3)
-        hba1c = b4.number_input("HbA1c (%)", 4.0, 6.0, 5.0)
-        ldl = b5.number_input("LDL (mg/dL)", 70.0, 130.0, 100.0)
-        hdl = b6.number_input("HDL (mg/dL)", 40.0, 60.0, 50.0)
+        hba1c = b4.number_input("HbA1c (%)", value=5.0)
+        ldl = b5.number_input("LDL (mg/dL)", value=100.0)
+        hdl = b6.number_input("HDL (mg/dL)", value=50.0)
 
         # Hematology
         st.markdown('<div class="section-header">🔬 Hematology Panel</div>', unsafe_allow_html=True)
         h1, h2, h3 = st.columns(3)
-        hemoglobin = h1.number_input("Hemoglobin (g/dL)", 13.5, 17.5, 15.0)
-        platelets = h2.number_input("Platelets (/µL)", 150000, 450000, 250000)
-        wbc = h3.number_input("WBC (/mm³)", 4000, 11000, 7000)
+        hemoglobin = h1.number_input("Hemoglobin (g/dL)", value=15.0)
+        platelets = h2.number_input("Platelets (/µL)", value=250000)
+        wbc = h3.number_input("WBC (/mm³)", value=7000)
 
         h4, h5, h6 = st.columns(3)
-        rbc = h4.number_input("RBC (M/µL)", 4.2, 5.4, 4.8)
-        hematocrit = h5.number_input("Hematocrit (%)", 38.0, 52.0, 45.0)
-        mcv = h6.number_input("MCV (fL)", 80.0, 100.0, 90.0)
+        rbc = h4.number_input("RBC (M/µL)", value=4.8)
+        hematocrit = h5.number_input("Hematocrit (%)", value=45.0)
+        mcv = h6.number_input("MCV (fL)", value=90.0)
 
         h7, h8, _ = st.columns(3)
-        mch = h7.number_input("MCH (pg)", 27.0, 33.0, 30.0)
-        mchc = h8.number_input("MCHC (g/dL)", 32.0, 36.0, 34.0)
+        mch = h7.number_input("MCH (pg)", value=30.0)
+        mchc = h8.number_input("MCHC (g/dL)", value=34.0)
 
         # Metabolic
         st.markdown('<div class="section-header">📈 Metabolic Indicators</div>', unsafe_allow_html=True)
         m1, m2, m3 = st.columns(3)
-        bmi = m1.number_input("BMI (kg/m²)", 18.5, 24.9, 21.5)
-        creatinine = m2.number_input("Creatinine (mg/dL)", 0.6, 1.2, 0.9)
-        insulin = m3.number_input("Insulin (µU/mL)", 5.0, 25.0, 10.0)
+        bmi = m1.number_input("BMI (kg/m²)", value=21.5)
+        creatinine = m2.number_input("Creatinine (mg/dL)", value=0.9)
+        insulin = m3.number_input("Insulin (µU/mL)", value=10.0)
 
         m4, m5, _ = st.columns(3)
-        alt = m4.number_input("ALT (U/L)", 10.0, 40.0, 20.0)
-        ast = m5.number_input("AST (U/L)", 10.0, 40.0, 20.0)
+        alt = m4.number_input("ALT (U/L)", value=20.0)
+        ast = m5.number_input("AST (U/L)", value=20.0)
 
         # Cardiac
         st.markdown('<div class="section-header">❤️ Cardiac Markers</div>', unsafe_allow_html=True)
@@ -469,7 +469,7 @@ def render_patient_dashboard():
         st.markdown('</div>', unsafe_allow_html=True)
 
     # ------------------- RIGHT: RESULT & GRAPH -------------------
-    with col2: #[Change here]
+    with col2:
         #st.markdown('<div class="modern-card" style="min-height: 480px;">', unsafe_allow_html=True)
         st.markdown("#### 🕒 Recent Predictions", unsafe_allow_html=True)
         st.markdown(
@@ -490,11 +490,11 @@ def render_patient_dashboard():
 
             if records:
                 # Display as horizontal cards
-                cols = st.columns(len(records))
+                #cols = st.columns(len(records))
                 for idx, rec in enumerate(records):
                     first_name, last_name, diagnosis, confidence = rec
                     btn_label = f"{first_name} {last_name}\n{diagnosis} ({confidence:.1f}%)"
-                    if cols[idx].button(btn_label, key=f"{first_name} {last_name} {idx}"):
+                    if st.button(btn_label, key=f"{first_name} {last_name} {idx}"):
                         # Load full patient values
                         cursor.execute("""
                             SELECT * FROM patients 
@@ -513,7 +513,8 @@ def render_patient_dashboard():
                                "confidence": full_row[-2],
                                "probabilities": [],
                            }
-                           st.experimental_rerun()
+                           st.markdown("<br>", unsafe_allow_html=True)
+                           st.rerun()
             else:
                 st.info("✅ No recent predictions found.")
         except Exception as e:
@@ -576,7 +577,9 @@ def render_patient_dashboard():
 
             st.markdown("<hr style='margin: 1.25rem 0; border: none; border-top: 1px solid #e2e8f0;'>",
                         unsafe_allow_html=True)
+            
 
+            """
             st.markdown("#### 📊 Parameters Exceeding Normal")
 
             patient = st.session_state["patient_inputs"]
@@ -598,14 +601,16 @@ def render_patient_dashboard():
                 st.info("✅ All parameters within normal range")
         else:
             st.markdown("""
-                <div style="text-align: center; padding: 3rem 1rem; color: #94a3b8;">
-                    <div style="font-size: 42px; margin-bottom: 0.75rem;">📋</div>
-                    <div style="font-size: 15px; font-weight: 600; margin-bottom: 0.5rem;">No Prediction Yet</div>
-                    <div style="font-size: 13px;">Enter patient parameters and click <b>Run Prediction</b></div>
-                </div>
+            
+                #<div style="text-align: center; padding: 3rem 1rem; color: #94a3b8;">
+                #    <div style="font-size: 42px; margin-bottom: 0.75rem;">📋</div>
+                #    <div style="font-size: 15px; font-weight: 600; margin-bottom: 0.5rem;">No Prediction Yet</div>
+                #    <div style="font-size: 13px;">Enter patient parameters and click <b>Run Prediction</b></div>
+                #</div>
             """, unsafe_allow_html=True)
 
         st.markdown('</div>', unsafe_allow_html=True)
+        """
 
 
 # =========================================================

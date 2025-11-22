@@ -1,0 +1,8 @@
+/* Customize Streamlit UI */
+body {
+  font-family: 'Inter', sans-serif;
+}
+
+.block-container {
+  padding-top: 2rem;
+}

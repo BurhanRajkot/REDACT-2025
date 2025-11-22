@@ -56,7 +56,7 @@ def predict_disease(scaled_input, threshold=0.2):
         return p.argmax()
 
 print("\n🤖 Running prediction...")
-prediction = model.predict(scaled)[0]
+prediction = predict_disease(scaled)
 
 try:
     proba = model.predict_proba(scaled)[0]
@@ -73,6 +73,8 @@ print(f"Predicted Class: {prediction}  ({disease})")
 if proba is not None:
     print("\nClass Probabilities:")
     for idx, p in enumerate(proba):
+        if(prediction !=2 and idx ==2):
+            continue
         print(f"  Class {idx}: {p*100:.2f}%")
 
 print("\n🎉 Model test complete!")

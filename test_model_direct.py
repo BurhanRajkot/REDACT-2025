@@ -1,6 +1,8 @@
 import os
 import numpy as np
 from BackEnd import load_model, load_medical_ranges, apply_scaling
+from Data import decoder
+
 
 print("🔍 Loading model...")
 model = load_model()
@@ -64,7 +66,9 @@ except:
 print("\n======================")
 print("MODEL OUTPUT")
 print("======================")
-print(f"Predicted Class: {prediction}")
+disease = decoder.decode_disease(prediction)
+print(f"Predicted Class: {prediction}  ({disease})")
+
 
 if proba is not None:
     print("\nClass Probabilities:")

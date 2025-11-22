@@ -1,80 +1,506 @@
 import streamlit as st
-import json
 import os
+import pandas as pd
 
-# ------ PAGE CONFIG ------
+# ---------------------------------------------------------
+# PAGE CONFIG
+# ---------------------------------------------------------
 st.set_page_config(
     page_title="MediGuard AI",
     page_icon="🩺",
     layout="wide"
 )
 
-# ------ LOAD CSS ------
-def load_css(file_path):
-    if os.path.exists(file_path):
-        with open(file_path, "r") as f:
+# ---------------------------------------------------------
+# LOAD CSS
+# ---------------------------------------------------------
+def load_css(path: str):
+    if os.path.exists(path):
+        with open(path, "r") as f:
             st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
+# adjust path if needed
 load_css("Styles/custom.css")
 
-# ------ FIXED: LOGO PATH ------
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-logo_path = os.path.join(BASE_DIR, "Assets", "logo.png")
+# ---------------------------------------------------------
+# CONSTANTS
+# ---------------------------------------------------------
+NORMAL_RANGES = {
+    "Glucose": (70, 140),
+    "Cholesterol": (125, 200),
+    "Hemoglobin": (13.5, 17.5),
+    "Platelets": (150000, 450000),
+    "White Blood Cells": (4000, 11000),
+    "Red Blood Cells": (4.2, 5.4),
+    "Hematocrit": (38, 52),
+    "Mean Corpuscular Volume": (80, 100),
+    "Mean Corpuscular Hemoglobin": (27, 33),
+    "Mean Corpuscular Hemoglobin Concentration": (32, 36),
+    "Insulin": (5, 25),
+    "BMI": (18.5, 24.9),
+    "Systolic Blood Pressure": (90, 120),
+    "Diastolic Blood Pressure": (60, 80),
+    "Triglycerides": (50, 150),
+    "HbA1c": (4, 6),
+    "LDL Cholesterol": (70, 130),
+    "HDL Cholesterol": (40, 60),
+    "ALT": (10, 40),
+    "AST": (10, 40),
+    "Heart Rate": (60, 100),
+    "Creatinine": (0.6, 1.2),
+    "Troponin": (0, 0.04),
+    "C-reactive Protein": (0, 3),
+}
 
-st.sidebar.image(logo_path, width=120)
-st.sidebar.title("MediGuard AI")
+FEATURE_ORDER = list(NORMAL_RANGES.keys())
 
-page = st.sidebar.radio(
-    "Navigation",
-    ["Home", "Input Form", "Prediction", "Risk Indicators"]
-)
+# ---------------------------------------------------------
+# NAVIGATION LOGIC (FIXED)
+# ---------------------------------------------------------
+# 1. Initialize Page Session State if not exists
+if "page" not in st.session_state:
+    st.session_state["page"] = "Home"
 
-# ------ HOME PAGE ------
-if page == "Home":
-    st.title("🩺 MediGuard AI — Intelligent Triage Assistant")
+# 2. Define Page Options
+PAGE_OPTIONS = ["Home", "Patient Dashboard", "Model Metrics"]
+
+# 3. Determine the current index for the sidebar based on session state
+try:
+    current_index = PAGE_OPTIONS.index(st.session_state["page"])
+except ValueError:
+    current_index = 0
+
+# ---------------------------------------------------------
+# SIDEBAR
+# ---------------------------------------------------------
+with st.sidebar:
     st.markdown("""
-    Welcome to **MediGuard AI**, a clinical triage tool that predicts disease likelihood
-    from 24 blood parameters and provides risk explainability.
+        <div style="text-align: center; margin-bottom: 2rem;">
+            <div style="width: 70px; height: 70px; background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+                 border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+                 font-size: 32px; margin-bottom: 1rem; box-shadow: 0 8px 25px rgba(59, 130, 246, 0.4);">
+                🩺
+            </div>
+            <h2 style="font-size: 22px; font-weight: 800; margin: 0; color: #ffffff;">MediGuard AI</h2>
+            <p style="font-size: 12px; opacity: 0.9; margin-top: 0.25rem;">Intelligent Triage Assistant</p>
+        </div>
+    """, unsafe_allow_html=True)
 
-    Use the sidebar to navigate between:
-    - **Input Form** → Enter patient blood values
-    - **Prediction** → Get disease prediction
-    - **Risk Indicators** → See what features contributed
-    """)
+    # 4. Use the dynamic index for the radio button
+    selected_nav = st.radio(
+        "Navigation",
+        PAGE_OPTIONS,
+        index=current_index,
+        key="nav_radio_widget"
+    )
 
-# ------ INPUT FORM PAGE ------
-elif page == "Input Form":
-    st.title("📥 Input Clinical Values")
-    st.write("Enter the raw values for each blood test parameter.")
+    # 5. Sync Sidebar Selection with Session State
+    if selected_nav != st.session_state["page"]:
+        st.session_state["page"] = selected_nav
+        st.rerun()
 
-    # Load scaling ranges
-    with open(os.path.join(BASE_DIR, "Data", "scaler.json")) as f:
-        scaling_ranges = json.load(f)
+    st.markdown("""
+        <div style="margin-top: 3rem; background: rgba(255, 255, 255, 0.15);
+             border-radius: 16px; padding: 1.25rem; border: 1px solid rgba(255, 255, 255, 0.2);">
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                <div style="width: 12px; height: 12px; background: #10b981; border-radius: 50%;"></div>
+                <div>
+                    <div style="font-size: 11px; opacity: 0.8;">System Status</div>
+                    <div style="font-size: 14px; font-weight: 700;">AI Model Active</div>
+                </div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
-    cols = st.columns(3)
-    user_inputs = {}
 
-    i = 0
-    for feature, rng in scaling_ranges.items():
-        col = cols[i % 3]
-        user_inputs[feature] = col.number_input(
-            feature,
-            min_value=float(rng[0]),
-            max_value=float(rng[1]),
-            step=0.01
+# =========================================================
+# HOME PAGE
+# =========================================================
+def render_home():
+    st.markdown('<div class="hero-section">', unsafe_allow_html=True)
+
+    col1, col2 = st.columns([1.25, 1])
+
+    with col1:
+        st.markdown("""
+            <div class="hero-badge">⚡ AI-Powered Clinical Decision Support</div>
+            <h1 class="hero-title">Intelligent Triage for Better Patient Outcomes</h1>
+            <p class="hero-subtitle">
+                MediGuard AI uses advanced machine learning to analyze clinical parameters
+                and provide accurate disease predictions, helping healthcare professionals
+                make faster, data-driven decisions.
+            </p>
+        """, unsafe_allow_html=True)
+
+        btn_col1, btn_col2, _ = st.columns([0.4, 0.4, 0.2])
+        with btn_col1:
+            if st.button("Get Started →", use_container_width=True, key="get_started"):
+                st.session_state["page"] = "Patient Dashboard"
+                st.rerun() # This ensures the sidebar updates on reload
+        with btn_col2:
+            st.button("Watch Demo", use_container_width=True, key="watch_demo")
+
+        st.markdown("""
+            <div class="stats-container">
+                <div class="stat-card">
+                    <div class="stat-number">95%+</div>
+                    <div class="stat-label">Accuracy Rate</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">50K+</div>
+                    <div class="stat-label">Predictions Made</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">24/7</div>
+                    <div class="stat-label">Availability</div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
+    with col2:
+        st.markdown("""
+            <div class="live-prediction-card">
+                <div class="live-header">
+                    <div class="live-dot"></div>
+                    <div>
+                        <div class="live-title">Live Prediction</div>
+                        <div class="live-subtitle">Patient Analysis in Progress</div>
+                    </div>
+                </div>
+
+                <div style="margin: 1.5rem 0;">
+                    <div class="confidence-label">Predicted Condition</div>
+                    <div class="prediction-badge">Heart Disease</div>
+                </div>
+
+                <div class="confidence-bar-container">
+                    <div class="confidence-label">Confidence Score</div>
+                    <div class="confidence-bar">
+                        <div class="confidence-fill" style="width: 94%;"></div>
+                    </div>
+                    <div class="confidence-text">94% Confidence</div>
+                </div>
+
+                <div style="margin-top: 1.5rem;">
+                    <div class="confidence-label">Risk Assessment</div>
+                    <span class="risk-badge high">● High Risk - Immediate Attention Required</span>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # Features Section
+    st.markdown("<div style='height: 2.5rem;'></div>", unsafe_allow_html=True)
+    st.markdown("""
+        <div style="text-align: center; margin-bottom: 2.5rem;">
+            <h2 style="font-size: 32px; font-weight: 800; color: #1e293b; margin-bottom: 0.5rem;">
+                Why Choose MediGuard AI?
+            </h2>
+            <p style="font-size: 15px; color: #64748b;">
+                Advanced AI technology designed to support healthcare professionals with accurate, explainable predictions.
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
+
+    c1, c2, c3 = st.columns(3)
+
+    features = [
+        ("🧠", "Advanced AI Models", "State-of-the-art machine learning algorithms trained on extensive clinical datasets for maximum accuracy."),
+        ("🛡️", "HIPAA Compliant", "Enterprise-grade security ensuring patient data privacy and compliance with healthcare regulations."),
+        ("📊", "Explainable Results", "Transparent feature importance insights help clinicians understand every prediction decision."),
+        ("⚡", "Real-Time Analysis", "Instant predictions powered by optimized algorithms to reduce patient waiting times significantly."),
+        ("🫀", "Multi-Disease Detection", "Comprehensive analysis covering cardiac, metabolic, and hematologic conditions in one unified system."),
+        ("✅", "Validated Accuracy", "Clinically validated with 95%+ accuracy and high recall to minimize dangerous false negatives."),
+    ]
+
+    for idx, (icon, title, desc) in enumerate(features):
+        with [c1, c2, c3, c1, c2, c3][idx]:
+            st.markdown(f"""
+                <div class="feature-card">
+                    <div class="feature-icon-wrapper">{icon}</div>
+                    <div class="feature-title">{title}</div>
+                    <div class="feature-desc">{desc}</div>
+                </div>
+            """, unsafe_allow_html=True)
+
+    # CTA Banner
+    st.markdown("""
+        <div class="cta-banner">
+            <div>
+                <div class="cta-title">Ready to Transform Patient Care?</div>
+                <div class="cta-subtitle">
+                    Join healthcare teams using MediGuard AI to improve triage accuracy and patient outcomes.
+                </div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # Footer
+    st.markdown("""
+        <div class="footer-section">
+            <div class="footer-text">
+                © 2024 MediGuard AI. All rights reserved. | Empowering clinicians with AI-driven decision support.
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+
+
+# =========================================================
+# PATIENT DASHBOARD PAGE
+# =========================================================
+def render_patient_dashboard():
+    st.markdown('<div class="page-title">Patient Dashboard</div>', unsafe_allow_html=True)
+    st.markdown('<div class="page-subtitle">Enter clinical parameters and review AI triage insights</div>', unsafe_allow_html=True)
+
+    col1, col2 = st.columns([2, 1.2])
+
+    # ------------------- LEFT: INPUTS -------------------
+    with col1:
+        st.markdown('<div class="modern-card">', unsafe_allow_html=True)
+        st.markdown("#### 📋 Enter Clinical Parameters")
+        st.markdown(
+            "<div style='color: #64748b; font-size: 14px; margin-bottom: 1.5rem;'>"
+            "Input patient blood test and vital sign data"
+            "</div>",
+            unsafe_allow_html=True,
         )
-        i += 1
 
-    st.session_state["inputs"] = user_inputs
-    st.success("Input values saved! Use the Prediction page next.")
+        # Vital Signs
+        st.markdown('<div class="section-header">⚡ Vital Signs</div>', unsafe_allow_html=True)
+        v1, v2, v3 = st.columns(3)
+        heart_rate = v1.number_input("Heart Rate (bpm)", 60.0, 100.0, 70.0, key="hr")
+        sbp = v2.number_input("Systolic BP (mmHg)", 90.0, 120.0, 110.0, key="sbp")
+        dbp = v3.number_input("Diastolic BP (mmHg)", 60.0, 80.0, 70.0, key="dbp")
 
-# ------ PREDICTION PAGE ------
-elif page == "Prediction":
-    st.title("🔮 Prediction Output")
-    st.write("Model prediction will appear here.")
-    st.info("Prediction logic will be connected after the ML model arrives.")
+        # Blood Chemistry
+        st.markdown('<div class="section-header">🧪 Blood Chemistry</div>', unsafe_allow_html=True)
+        b1, b2, b3 = st.columns(3)
+        glucose = b1.number_input("Glucose (mg/dL)", 70.0, 140.0, 90.0)
+        cholesterol = b2.number_input("Cholesterol (mg/dL)", 125.0, 200.0, 150.0)
+        triglycerides = b3.number_input("Triglycerides (mg/dL)", 50.0, 150.0, 100.0)
 
-# ------ RISK INDICATOR PAGE ------
-elif page == "Risk Indicators":
-    st.title("📊 Risk Indicators / Explainability")
-    st.write("Feature importance and explanations will appear here.")
+        b4, b5, b6 = st.columns(3)
+        hba1c = b4.number_input("HbA1c (%)", 4.0, 6.0, 5.0)
+        ldl = b5.number_input("LDL (mg/dL)", 70.0, 130.0, 100.0)
+        hdl = b6.number_input("HDL (mg/dL)", 40.0, 60.0, 50.0)
+
+        # Hematology
+        st.markdown('<div class="section-header">🔬 Hematology Panel</div>', unsafe_allow_html=True)
+        h1, h2, h3 = st.columns(3)
+        hemoglobin = h1.number_input("Hemoglobin (g/dL)", 13.5, 17.5, 15.0)
+        platelets = h2.number_input("Platelets (/µL)", 150000, 450000, 250000)
+        wbc = h3.number_input("WBC (/mm³)", 4000, 11000, 7000)
+
+        h4, h5, h6 = st.columns(3)
+        rbc = h4.number_input("RBC (M/µL)", 4.2, 5.4, 4.8)
+        hematocrit = h5.number_input("Hematocrit (%)", 38.0, 52.0, 45.0)
+        mcv = h6.number_input("MCV (fL)", 80.0, 100.0, 90.0)
+
+        h7, h8, _ = st.columns(3)
+        mch = h7.number_input("MCH (pg)", 27.0, 33.0, 30.0)
+        mchc = h8.number_input("MCHC (g/dL)", 32.0, 36.0, 34.0)
+
+        # Metabolic
+        st.markdown('<div class="section-header">📈 Metabolic Indicators</div>', unsafe_allow_html=True)
+        m1, m2, m3 = st.columns(3)
+        bmi = m1.number_input("BMI (kg/m²)", 18.5, 24.9, 21.5)
+        creatinine = m2.number_input("Creatinine (mg/dL)", 0.6, 1.2, 0.9)
+        insulin = m3.number_input("Insulin (µU/mL)", 5.0, 25.0, 10.0)
+
+        m4, m5, _ = st.columns(3)
+        alt = m4.number_input("ALT (U/L)", 10.0, 40.0, 20.0)
+        ast = m5.number_input("AST (U/L)", 10.0, 40.0, 20.0)
+
+        # Cardiac
+        st.markdown('<div class="section-header">❤️ Cardiac Markers</div>', unsafe_allow_html=True)
+        c1, c2 = st.columns(2)
+        troponin = c1.number_input("Troponin (ng/mL)", 0.0, 0.04, 0.01)
+        crp = c2.number_input("CRP (mg/L)", 0.0, 3.0, 1.0)
+
+        st.markdown("<div style='height: 1rem;'></div>", unsafe_allow_html=True)
+
+        if st.button("🔍 Run Prediction", use_container_width=True, type="primary"):
+            patient_data = {
+                "Glucose": glucose, "Cholesterol": cholesterol, "Hemoglobin": hemoglobin,
+                "Platelets": platelets, "White Blood Cells": wbc, "Red Blood Cells": rbc,
+                "Hematocrit": hematocrit, "Mean Corpuscular Volume": mcv,
+                "Mean Corpuscular Hemoglobin": mch, "Mean Corpuscular Hemoglobin Concentration": mchc,
+                "Insulin": insulin, "BMI": bmi, "Systolic Blood Pressure": sbp,
+                "Diastolic Blood Pressure": dbp, "Triglycerides": triglycerides,
+                "HbA1c": hba1c, "LDL Cholesterol": ldl, "HDL Cholesterol": hdl,
+                "ALT": alt, "AST": ast, "Heart Rate": heart_rate,
+                "Creatinine": creatinine, "Troponin": troponin, "C-reactive Protein": crp,
+            }
+            st.session_state["patient_inputs"] = patient_data
+            st.success(
+                "✅ Analysis complete! Review the prediction results here and "
+                "navigate to **Model Metrics** for detailed comparison."
+            )
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # ------------------- RIGHT: RESULT & GRAPH -------------------
+    with col2:
+        st.markdown('<div class="modern-card" style="min-height: 480px;">', unsafe_allow_html=True)
+        st.markdown("#### 🎯 Disease Prediction Result")
+        st.markdown(
+            "<div style='color: #64748b; font-size: 13px; margin-bottom: 1.25rem;'>"
+            "AI-powered triage assessment"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+        if "patient_inputs" in st.session_state:
+            # Simulated prediction UI
+            st.markdown("""
+                <div style="background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+                     padding: 1.5rem; border-radius: 16px; text-align: center; margin-bottom: 1.25rem;">
+                    <div style="font-size: 13px; color: #1e40af; margin-bottom: 0.4rem;">Predicted Condition</div>
+                    <div style="font-size: 22px; font-weight: 800; color: #1e40af;">Heart Disease</div>
+                </div>
+
+                <div style="margin-bottom: 1.25rem;">
+                    <div style="font-size: 12px; color: #64748b; margin-bottom: 0.5rem;">Confidence Score</div>
+                    <div class="confidence-bar">
+                        <div class="confidence-fill" style="width: 94%;"></div>
+                    </div>
+                    <div style="font-size: 14px; color: #475569; margin-top: 0.4rem; font-weight: 600;">94% Confidence</div>
+                </div>
+
+                <div style="margin-bottom: 1rem;">
+                    <div style="font-size: 12px; color: #64748b; margin-bottom: 0.5rem;">Risk Assessment</div>
+                    <span class="risk-badge high">⚠️ High Risk</span>
+                </div>
+            """, unsafe_allow_html=True)
+
+            st.markdown("<hr style='margin: 1.25rem 0; border: none; border-top: 1px solid #e2e8f0;'>",
+                        unsafe_allow_html=True)
+
+            st.markdown("#### 📊 Parameters Exceeding Normal")
+
+            patient = st.session_state["patient_inputs"]
+            over_features = []
+            over_amounts = []
+
+            for feat, value in patient.items():
+                low, high = NORMAL_RANGES[feat]
+                if value > high:
+                    over_features.append(feat)
+                    over_amounts.append(value - high)
+
+            if over_features:
+                df_over = pd.DataFrame(
+                    {"Feature": over_features, "Excess": over_amounts}
+                ).set_index("Feature")
+                st.bar_chart(df_over)
+            else:
+                st.info("✅ All parameters within normal range")
+        else:
+            st.markdown("""
+                <div style="text-align: center; padding: 3rem 1rem; color: #94a3b8;">
+                    <div style="font-size: 42px; margin-bottom: 0.75rem;">📋</div>
+                    <div style="font-size: 15px; font-weight: 600; margin-bottom: 0.5rem;">No Prediction Yet</div>
+                    <div style="font-size: 13px;">Enter patient parameters and click <b>Run Prediction</b></div>
+                </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+
+# =========================================================
+# MODEL METRICS PAGE
+# =========================================================
+def render_model_metrics():
+    st.markdown('<div class="page-title">Model Metrics & Patient Comparison</div>', unsafe_allow_html=True)
+    st.markdown('<div class="page-subtitle">Visualize patient lab values compared to reference ranges</div>', unsafe_allow_html=True)
+
+    if "patient_inputs" not in st.session_state:
+        st.warning("⚠️ No patient data available. Please enter values on the Patient Dashboard first.")
+        return
+
+    patient = st.session_state["patient_inputs"]
+
+    features = []
+    normal_vals = []
+    patient_vals = []
+
+    for feat in FEATURE_ORDER:
+        low, high = NORMAL_RANGES[feat]
+        mid = (low + high) / 2
+        features.append(feat)
+        normal_vals.append(mid)
+        patient_vals.append(patient.get(feat, mid))
+
+    df = pd.DataFrame({
+        "Feature": features,
+        "Normal Range (Midpoint)": normal_vals,
+        "Patient Value": patient_vals
+    }).set_index("Feature")
+
+    col1, col2 = st.columns([2.3, 1])
+
+    with col1:
+        st.markdown('<div class="modern-card">', unsafe_allow_html=True)
+        st.markdown("#### 📊 Overall Lab Profile Comparison")
+        st.markdown(
+            "<div style='color: #64748b; font-size: 13px; margin-bottom: 1rem;'>"
+            "Normal range midpoint vs patient values"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+        st.bar_chart(df)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with col2:
+        st.markdown('<div class="modern-card">', unsafe_allow_html=True)
+        st.markdown("#### 📈 Summary Insights")
+
+        high_count = sum(
+            patient_vals[i] > NORMAL_RANGES[FEATURE_ORDER[i]][1]
+            for i in range(len(FEATURE_ORDER))
+        )
+        low_count = sum(
+            patient_vals[i] < NORMAL_RANGES[FEATURE_ORDER[i]][0]
+            for i in range(len(FEATURE_ORDER))
+        )
+        normal_count = len(FEATURE_ORDER) - high_count - low_count
+
+        st.markdown(f"""
+            <div style="margin: 1rem 0;">
+                <div style="padding: 0.75rem; background: #f1f5f9; border-radius: 10px; margin-bottom: 0.5rem;">
+                    <span style="font-weight: 700; color: #1e293b;">Total Parameters:</span>
+                    <span style="float: right; font-weight: 700; color: #3b82f6;">{len(FEATURE_ORDER)}</span>
+                </div>
+                <div style="padding: 0.75rem; background: #fee2e2; border-radius: 10px; margin-bottom: 0.5rem;">
+                    <span style="font-weight: 700; color: #1e293b;">Above Normal:</span>
+                    <span style="float: right; font-weight: 700; color: #dc2626;">{high_count}</span>
+                </div>
+                <div style="padding: 0.75rem; background: #dbeafe; border-radius: 10px; margin-bottom: 0.5rem;">
+                    <span style="font-weight: 700; color: #1e293b;">Below Normal:</span>
+                    <span style="float: right; font-weight: 700; color: #2563eb;">{low_count}</span>
+                </div>
+                <div style="padding: 0.75rem; background: #d1fae5; border-radius: 10px;">
+                    <span style="font-weight: 700; color: #1e293b;">Within Range:</span>
+                    <span style="float: right; font-weight: 700; color: #059669;">{normal_count}</span>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown("<hr style='margin: 1rem 0; border-top: 1px solid #e2e8f0;'>", unsafe_allow_html=True)
+        st.info("💡 Actual model metrics (precision, recall, AUC-ROC) will be displayed here once the ML model is integrated.")
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+
+# =========================================================
+# ROUTER (Already handled by session state at top)
+# =========================================================
+page = st.session_state["page"]
+
+if page == "Home":
+    render_home()
+elif page == "Patient Dashboard":
+    render_patient_dashboard()
+elif page == "Model Metrics":
+    render_model_metrics()

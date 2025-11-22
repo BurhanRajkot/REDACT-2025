@@ -1,3 +1,5 @@
+from BackEnd.model_loader import load_model, load_medical_ranges
+from BackEnd.scaling_bridge import apply_scaling
 import streamlit as st
 import os
 import pandas as pd

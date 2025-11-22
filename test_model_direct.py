@@ -1,4 +1,5 @@
 import os
+import numpy as np
 from BackEnd import load_model, load_medical_ranges, apply_scaling
 
 print("🔍 Loading model...")
@@ -41,6 +42,16 @@ sample_input = {
 print("\n📊 Scaling input...")
 scaled = apply_scaling(sample_input)
 print("Scaled Input:", scaled)
+
+def predict_disease(scaled_input, threshold=0.2):
+    p = model.predict_proba(scaled_input)
+    if p.max() < threshold and p.argmax() == 2:  # if max prob is less than threshold or predicted as Healthy
+        sorted_indices = np.argsort(p, axis=1)
+        descending_indices = sorted_indices[:, ::-1]
+        second_highest_indices = descending_indices[:, 1]
+        return second_highest_indices  # fallback
+    else:
+        return p.argmax()
 
 print("\n🤖 Running prediction...")
 prediction = model.predict(scaled)[0]

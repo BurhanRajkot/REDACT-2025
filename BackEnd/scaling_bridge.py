@@ -1,5 +1,6 @@
 import json
 import numpy as np
+import os
 
 class MedicalScaler:
     def __init__(self, json_path):
@@ -27,3 +28,16 @@ class MedicalScaler:
             scaled.append(scaled_val)
 
         return np.array(scaled).reshape(1, -1)
+
+
+# 🔥 IMPORTANT WRAPPER for app.py
+def apply_scaling(raw_dict):
+    """
+    Public function used by app.py.
+    Loads medical_ranges.json and returns scaled vector.
+    """
+    BASE_DIR = os.path.dirname(os.path.dirname(__file__))  # REDACT-2025/
+    JSON_PATH = os.path.join(BASE_DIR, "Data", "medical_ranges.json")
+
+    scaler = MedicalScaler(JSON_PATH)
+    return scaler.transform(raw_dict)

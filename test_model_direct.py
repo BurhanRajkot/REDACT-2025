@@ -1,4 +1,5 @@
 import os
+import shap
 import numpy as np
 from BackEnd import load_model, load_medical_ranges, apply_scaling
 from Data import decoder
@@ -53,10 +54,12 @@ def predict_disease(scaled_input, threshold=0.2):
         second_highest_indices = descending_indices[:, 1]
         return second_highest_indices  # fallback
     else:
-        return p.argmax()
+        return p.max(), p.argmax()
+    
+shap_explainer = shap.TreeExplainer(model, feature_names=list(ranges.keys()))
 
 print("\n🤖 Running prediction...")
-prediction = predict_disease(scaled)
+prob, prediction = predict_disease(scaled)
 
 try:
     proba = model.predict_proba(scaled)[0]
@@ -76,5 +79,11 @@ if proba is not None:
         if(prediction !=2 and idx ==2):
             continue
         print(f"  Class {idx}: {p*100:.2f}%")
+
+
+shap_values = shap_explainer.shap_values(scaled)[0]
+print("\n🔍 Generating Feature contributions...")
+feature_contributions = shap_values[:, prediction]
+
 
 print("\n🎉 Model test complete!")

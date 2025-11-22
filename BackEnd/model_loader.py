@@ -5,7 +5,7 @@ import joblib
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))  # goes up to REDACT-2025
 DATA_DIR = os.path.join(BASE_DIR, "Data")
 
-MODEL_PATH = os.path.join(DATA_DIR, "blood_disease_classifier_model.pkl")
+MODEL_PATH = os.path.join(DATA_DIR, "model_four_pm.pkl")
 RANGES_PATH = os.path.join(DATA_DIR, "medical_ranges.json")
 
 

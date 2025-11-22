@@ -15,7 +15,8 @@ import sqlite3
 st.set_page_config(
     page_title="MediGuard AI",
     page_icon="🩺",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
 # ---------------------------------------------------------
@@ -708,3 +709,11 @@ elif page == "Patient Dashboard":
     render_patient_dashboard()
 elif page == "Model Metrics":
     render_model_metrics()
+
+def reload_page():
+    if page == "Home":
+        render_home()
+    elif page == "Patient Dashboard":
+        render_patient_dashboard()
+    elif page == "Model Metrics":
+        render_model_metrics()

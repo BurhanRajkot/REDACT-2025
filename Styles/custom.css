@@ -418,6 +418,21 @@ header {
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25) !important;
 }
 
+[data-testid='stTextInput'] input {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-radius: 12px !important;
+  border: 1.8px solid #e2e8f0 !important;
+  padding: 0.75rem 1rem !important;
+  font-size: 16px !important;
+  box-shadow: none !important;
+  height: 50px !important;
+}
+
+label[data-testid="stWidgetLabel"] {
+    color: #1e293b !important;
+}
+
 div[data-baseweb='input'] {
   background: #ffffff !important;
   color: #0f172a !important;

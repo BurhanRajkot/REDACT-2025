@@ -199,6 +199,10 @@ with st.sidebar:
 # =========================================================
 # HOME PAGE
 # =========================================================
+def navigate_to_dashboard():
+    """Callback function to change the current page state."""
+    st.session_state["page"] = "Patient Dashboard"
+
 def render_home():
     st.markdown('<div class="hero-section">', unsafe_allow_html=True)
 
@@ -217,9 +221,12 @@ def render_home():
 
         btn_col1, btn_col2, _ = st.columns([0.4, 0.4, 0.2])
         with btn_col1:
-            if st.button("Get Started →", use_container_width=True, key="get_started"):
-                st.session_state["page"] = "Patient Dashboard"
-                st.rerun()  # This ensures the sidebar updates on reload
+            st.button(
+                "Get Started →", 
+                use_container_width=True, 
+                key="get_started",
+                on_click=navigate_to_dashboard
+            )
         with btn_col2:
             st.button("Watch Demo", use_container_width=True, key="watch_demo")
 
@@ -333,21 +340,27 @@ def render_home():
 # PATIENT DASHBOARD PAGE
 # =========================================================
 def render_patient_dashboard():
-    #st.markdown('<div class="page-title">Patient Dashboard</div>', unsafe_allow_html=True)
+    st.markdown('<div class="page-title">Patient Dashboard</div>', unsafe_allow_html=True)
     st.markdown('<div class="page-subtitle">Enter clinical parameters and review AI triage insights</div>', unsafe_allow_html=True)
 
     col1, col2 = st.columns([2, 1.2])
 
     # ------------------- LEFT: INPUTS -------------------
     with col1:
-        st.markdown('<div class="modern-card">', unsafe_allow_html=True)
-        st.markdown("#### 📋 Enter Clinical Parameters")
+        #st.markdown('<div class="modern-card">', unsafe_allow_html=True)
+        st.markdown("#### Enter Clinical Parameters")
         st.markdown(
             "<div style='color: #64748b; font-size: 14px; margin-bottom: 1.5rem;'>"
             "Input patient blood test and vital sign data"
             "</div>",
             unsafe_allow_html=True,
         )
+
+        # Vital Signs
+        st.markdown('<div class="section-header">Patient Details</div>', unsafe_allow_html=True)
+        v1, v2 = st.columns(2)
+        f_name = v1.text_input("First Name", value="", key="fn")
+        s_name = v2.text_input("Last Name", value="", key="sn")
 
         # Vital Signs
         st.markdown('<div class="section-header">⚡ Vital Signs</div>', unsafe_allow_html=True)
@@ -472,7 +485,7 @@ def render_patient_dashboard():
                     "probabilities": [float(p) for p in proba],
                 }
 
-                insert_row("Ahmad", "Azmi", list(patient_data.values()), confidence, disease_name)
+                insert_row(f_name, s_name, list(patient_data.values()), confidence, disease_name)
 
                 st.success(
                     "✅ Analysis complete! Review the prediction results here and "
@@ -486,7 +499,7 @@ def render_patient_dashboard():
     # ------------------- RIGHT: RESULT & GRAPH -------------------
     with col2:
         #st.markdown('<div class="modern-card" style="min-height: 480px;">', unsafe_allow_html=True)
-        st.markdown("#### 🕒 Recent Predictions", unsafe_allow_html=True)
+        st.markdown("#### Recent Predictions", unsafe_allow_html=True)
         st.markdown(
             "<div style='color: #64748b; font-size: 13px; margin-bottom: 1rem;'>"
             "Click a past diagnosis to reload patient data"
@@ -541,7 +554,7 @@ def render_patient_dashboard():
         #-----------------------------
 
         
-        st.markdown("#### 🎯 Disease Prediction Result")
+        st.markdown("#### Disease Prediction Result")
         st.markdown(
             "<div style='color: #64748b; font-size: 13px; margin-bottom: 1.25rem;'>"
             "AI-powered triage assessment"

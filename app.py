@@ -6,6 +6,7 @@ import pandas as pd
 import json
 import shap
 import numpy as np
+import sqlite3
 
 # ---------------------------------------------------------
 # PAGE CONFIG
@@ -104,6 +105,35 @@ def classify_risk(disease_name: str, confidence: float) -> str:
         return "Moderate"
     else:
         return "Borderline"
+
+
+#---------------------------------------------------------
+#DATABASE CONNECTION (FOR FUTURE USE)
+#---------------------------------------------------------
+
+DB_PATH = os.path.join('Database', 'mediBase.db')
+
+@st.cache_resource
+def get_connection():
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    return conn
+
+conn = get_connection()
+cursor = conn.cursor()
+
+def insert_row(first_name, last_name, values, confidence, disease_name):
+    if len(values) != 24:
+        raise ValueError("You must provide exactly 24 values.")
+    
+    # Combine all values into a single list
+    all_values = [first_name, last_name] + values + [confidence, disease_name]
+    
+    # Create placeholders for all 29 values (3 + 24 + 2)
+    placeholders = ", ".join(["?"] * len(all_values))
+    
+    # Execute the query
+    cursor.execute(f"INSERT INTO patients VALUES ({placeholders})", all_values)
+    conn.commit()
 
 # ---------------------------------------------------------
 # NAVIGATION LOGIC (FIXED)
@@ -401,7 +431,7 @@ def render_patient_dashboard():
                         second_highest_indices = descending_indices[:, 1]
                         return p[second_highest_indices], second_highest_indices  # fallback
                     else:
-                        return p.max(), p.argmax()
+                        return float(p.max()*100), p.argmax()
                     
                 def imp_features(scaled_input, prediction):
                     shap_explainer = shap.TreeExplainer(model, feature_names=FEATURE_ORDER)
@@ -427,6 +457,8 @@ def render_patient_dashboard():
                     "probabilities": [float(p) for p in proba],
                 }
 
+                insert_row("Ahmad", "Azmi", list(patient_data.values()), confidence, disease_name)
+
                 st.success(
                     "✅ Analysis complete! Review the prediction results here and "
                     "navigate to **Model Metrics** for detailed comparison."
@@ -437,8 +469,61 @@ def render_patient_dashboard():
         st.markdown('</div>', unsafe_allow_html=True)
 
     # ------------------- RIGHT: RESULT & GRAPH -------------------
-    with col2:
-        st.markdown('<div class="modern-card" style="min-height: 480px;">', unsafe_allow_html=True)
+    with col2: #[Change here]
+        #st.markdown('<div class="modern-card" style="min-height: 480px;">', unsafe_allow_html=True)
+        st.markdown("#### 🕒 Recent Predictions", unsafe_allow_html=True)
+        st.markdown(
+            "<div style='color: #64748b; font-size: 13px; margin-bottom: 1rem;'>"
+            "Click a past diagnosis to reload patient data"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+        # Fetch last 3 predictions
+        try:
+            cursor.execute("""
+                SELECT first_name, last_name, diagnosis, confidence 
+                FROM patients
+                LIMIT 3
+            """)
+            records = cursor.fetchall()
+
+            if records:
+                # Display as horizontal cards
+                cols = st.columns(len(records))
+                for idx, rec in enumerate(records):
+                    first_name, last_name, diagnosis, confidence = rec
+                    btn_label = f"{first_name} {last_name}\n{diagnosis} ({confidence:.1f}%)"
+                    if cols[idx].button(btn_label, key=f"{first_name} {last_name} {idx}"):
+                        # Load full patient values
+                        cursor.execute("""
+                            SELECT * FROM patients 
+                            WHERE first_name = ? AND last_name = ? AND diagnosis = ? AND confidence = ?
+                            LIMIT 1
+                        """, (first_name, last_name, diagnosis, confidence))
+                        full_row = cursor.fetchone()
+                        if full_row:
+                           # Extract the 24 clinical values
+                           values = full_row[2:-2]  # assumes table: | first_name | last_name | 24 values | confidence | disease_name
+                           patient_data = dict(zip(FEATURE_ORDER, values))
+                           st.session_state["patient_inputs"] = patient_data
+                           st.session_state["prediction"] = {
+                               "class_index": None,
+                               "disease_name": full_row[-1],
+                               "confidence": full_row[-2],
+                               "probabilities": [],
+                           }
+                           st.experimental_rerun()
+            else:
+                st.info("✅ No recent predictions found.")
+        except Exception as e:
+                st.error(f"⚠️ Failed to load recent predictions: {e}")
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        #-----------------------------
+
+        
         st.markdown("#### 🎯 Disease Prediction Result")
         st.markdown(
             "<div style='color: #64748b; font-size: 13px; margin-bottom: 1.25rem;'>"

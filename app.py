@@ -3,6 +3,7 @@ from BackEnd.scaling_bridge import apply_scaling
 import streamlit as st
 import os
 import pandas as pd
+import matplotlib.pyplot as plt
 import json
 import shap
 import numpy as np
@@ -331,7 +332,7 @@ def render_home():
 # PATIENT DASHBOARD PAGE
 # =========================================================
 def render_patient_dashboard():
-    st.markdown('<div class="page-title">Patient Dashboard</div>', unsafe_allow_html=True)
+    #st.markdown('<div class="page-title">Patient Dashboard</div>', unsafe_allow_html=True)
     st.markdown('<div class="page-subtitle">Enter clinical parameters and review AI triage insights</div>', unsafe_allow_html=True)
 
     col1, col2 = st.columns([2, 1.2])
@@ -400,7 +401,7 @@ def render_patient_dashboard():
         crp = c2.number_input("CRP (mg/L)", 0.0, 3.0, 1.0)
 
         st.markdown("<div style='height: 1rem;'></div>", unsafe_allow_html=True)
-
+        saphs = {}
         if st.button("🔍 Run Prediction", use_container_width=True, type="primary"):
             patient_data = {
                 "Glucose": glucose, "Cholesterol": cholesterol, "Hemoglobin": hemoglobin,
@@ -413,7 +414,7 @@ def render_patient_dashboard():
                 "ALT": alt, "AST": ast, "Heart Rate": heart_rate,
                 "Creatinine": creatinine, "Troponin": troponin, "C-reactive Protein": crp,
             }
-
+        
             try:
                 # Save inputs
                 st.session_state["patient_inputs"] = patient_data
@@ -435,20 +436,33 @@ def render_patient_dashboard():
                     
                 def imp_features(scaled_input, prediction):
                     shap_explainer = shap.TreeExplainer(model, feature_names=FEATURE_ORDER)
-                    shap_values = shap_explainer.shap_values(scaled)[0]
+                    shap_values = shap_explainer.shap_values(scaled_input)[0]
                     feature_contributions = shap_values[:, prediction]
-                    impotance = np.abs(feature_contributions)
-                    important_f = impotance.argsort()[::-1]
-                    imps = {}
-                    for i in range(5):
-                        imps.append({FEATURE_ORDER[important_f[i]] : feature_contributions[important_f[i]]})
-                    return imps
+                    importance = np.abs(feature_contributions)
+                    max_imp = importance.max()
+                    threshold = 0.1 * max_imp
+
+                    idx = np.where(importance >= threshold)[0]
+                    important_features = {}
+
+                    if len(idx) < 3:
+                        top5 = importance.argsort()[::-1][:3]
+                        for i in top5:
+                            important_features[FEATURE_ORDER[i]] = float(feature_contributions[i])
+                        return important_features
+
+                    for i in idx:
+                        important_features[FEATURE_ORDER[i]] = float(feature_contributions[i])
+
+                        return important_features
 
                 proba = model.predict_proba(scaled)[0]
                 #best_idx = max(range(len(proba)), key=lambda i: proba[i])
                 #confidence = float(proba[best_idx] * 100.0)
                 confidence, best_idx = predict_disease(scaled)
                 disease_name = decode_disease(best_idx)
+
+                saphs = imp_features(scaled, best_idx)
 
                 st.session_state["prediction"] = {
                     "class_index": int(best_idx),
@@ -484,6 +498,7 @@ def render_patient_dashboard():
             cursor.execute("""
                 SELECT first_name, last_name, diagnosis, confidence 
                 FROM patients
+                ORDER BY ROWID DESC
                 LIMIT 3
             """)
             records = cursor.fetchall()
@@ -578,39 +593,23 @@ def render_patient_dashboard():
             st.markdown("<hr style='margin: 1.25rem 0; border: none; border-top: 1px solid #e2e8f0;'>",
                         unsafe_allow_html=True)
             
+        def shap_bar_chart(imps: dict):
+            df = pd.DataFrame({
+                "Feature": list(imps.keys()),
+                "SHAP": list(imps.values())
+            })
 
-            """
-            st.markdown("#### 📊 Parameters Exceeding Normal")
+            colors = ["red" if v > 0 else "blue" for v in df["SHAP"]]
 
-            patient = st.session_state["patient_inputs"]
-            over_features = []
-            over_amounts = []
+            fig, ax = plt.subplots(figsize=(6, 4))
+            ax.barh(df["Feature"], df["SHAP"], color=colors)
+            ax.set_title("SHAP Contributions (Red = Higher Risk)")
+            st.pyplot(fig)
 
-            for feat, value in patient.items():
-                low, high = NORMAL_RANGES[feat]
-                if value > high:
-                    over_features.append(feat)
-                    over_amounts.append(value - high)
-
-            if over_features:
-                df_over = pd.DataFrame(
-                    {"Feature": over_features, "Excess": over_amounts}
-                ).set_index("Feature")
-                st.bar_chart(df_over)
-            else:
-                st.info("✅ All parameters within normal range")
-        else:
-            st.markdown("""
             
-                #<div style="text-align: center; padding: 3rem 1rem; color: #94a3b8;">
-                #    <div style="font-size: 42px; margin-bottom: 0.75rem;">📋</div>
-                #    <div style="font-size: 15px; font-weight: 600; margin-bottom: 0.5rem;">No Prediction Yet</div>
-                #    <div style="font-size: 13px;">Enter patient parameters and click <b>Run Prediction</b></div>
-                #</div>
-            """, unsafe_allow_html=True)
+        shap_bar_chart(saphs)
 
-        st.markdown('</div>', unsafe_allow_html=True)
-        """
+#-----------------------------    # Parameters Exceeding Normal Ranges
 
 
 # =========================================================

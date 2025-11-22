@@ -1,0 +1,10 @@
+{
+  "Disease": {
+    "Anemia" : 0,
+    "Diabetes" : 1,
+    "Healthy" : 2,
+    "Heart Di": 3,
+    "Thalasse" : 4,
+    "Thromboc" : 5
+  }
+}

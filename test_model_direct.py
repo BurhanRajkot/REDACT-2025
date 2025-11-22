@@ -46,6 +46,8 @@ print("\n📊 Scaling input...")
 scaled = apply_scaling(sample_input)
 print("Scaled Input:", scaled)
 
+features = list(ranges.keys())
+
 def predict_disease(scaled_input, threshold=0.2):
     p = model.predict_proba(scaled_input)
     if p.max() < threshold and p.argmax() == 2:  # if max prob is less than threshold or predicted as Healthy
@@ -56,7 +58,7 @@ def predict_disease(scaled_input, threshold=0.2):
     else:
         return p.max(), p.argmax()
     
-shap_explainer = shap.TreeExplainer(model, feature_names=list(ranges.keys()))
+shap_explainer = shap.TreeExplainer(model, feature_names=features)
 
 print("\n🤖 Running prediction...")
 prob, prediction = predict_disease(scaled)
@@ -84,6 +86,13 @@ if proba is not None:
 shap_values = shap_explainer.shap_values(scaled)[0]
 print("\n🔍 Generating Feature contributions...")
 feature_contributions = shap_values[:, prediction]
+
+impotance = np.abs(feature_contributions)
+
+important_f = impotance.argsort()[::-1]
+
+for i in range(5):
+    print(f"  {i+1}. {features[important_f[i]]}: SHAP Value = {feature_contributions[important_f[i]]:.4f}")
 
 
 print("\n🎉 Model test complete!")

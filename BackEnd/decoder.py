@@ -9,7 +9,7 @@ def decode_disease(encoded_value):
 
     if _cached_encoder is None:
         # Path to REDACT-2025/Data/encoder.json
-        BACKEND_DIR = os.path.dirname(__file__)           # BackEnd/
+        BACKEND_DIR = os.path.dirname(__file__)           # Data/
         ROOT_DIR = os.path.dirname(BACKEND_DIR)           # REDACT-2025/
         ENCODER_PATH = os.path.join(ROOT_DIR, "Data", "encoder.json")
 

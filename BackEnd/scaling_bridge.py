@@ -2,6 +2,7 @@ import json
 import numpy as np
 import os
 
+
 class MedicalScaler:
     def __init__(self, json_path):
         with open(json_path, "r") as f:
@@ -30,7 +31,7 @@ class MedicalScaler:
         return np.array(scaled).reshape(1, -1)
 
 
-# 🔥 IMPORTANT WRAPPER for app.py
+# 🔥 Public wrapper for app.py
 def apply_scaling(raw_dict):
     """
     Public function used by app.py.

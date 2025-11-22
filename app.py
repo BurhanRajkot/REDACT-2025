@@ -3,6 +3,7 @@ from BackEnd.scaling_bridge import apply_scaling
 import streamlit as st
 import os
 import pandas as pd
+import json
 
 # ---------------------------------------------------------
 # PAGE CONFIG
@@ -55,6 +56,52 @@ NORMAL_RANGES = {
 }
 
 FEATURE_ORDER = list(NORMAL_RANGES.keys())
+
+# ---------------------------------------------------------
+# MODEL + LABEL MAPPING (from encoder.json)
+# ---------------------------------------------------------
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "Data")
+ENCODER_PATH = os.path.join(DATA_DIR, "encoder.json")
+
+@st.cache_resource
+def get_model():
+    return load_model()
+
+@st.cache_resource
+def get_label_mapping():
+    """
+    Load encoder.json once and build: class_index -> disease_name
+    """
+    try:
+        with open(ENCODER_PATH, "r") as f:
+            encoder = json.load(f)
+        disease_map = encoder.get("Disease", {})
+        reverse_map = {v: k for k, v in disease_map.items()}
+        return reverse_map
+    except Exception:
+        return {}
+
+def decode_disease(class_index: int) -> str:
+    mapping = get_label_mapping()
+    return mapping.get(class_index, f"Class {class_index}")
+
+def classify_risk(disease_name: str, confidence: float) -> str:
+    """
+    Simple rule-based risk:
+      - Healthy -> Low
+      - Else + conf>=80 -> High
+      - Else + conf>=50 -> Moderate
+      - Else -> Borderline
+    """
+    if disease_name.lower() == "healthy":
+        return "Low"
+    if confidence >= 80:
+        return "High"
+    elif confidence >= 50:
+        return "Moderate"
+    else:
+        return "Borderline"
 
 # ---------------------------------------------------------
 # NAVIGATION LOGIC (FIXED)
@@ -138,7 +185,7 @@ def render_home():
         with btn_col1:
             if st.button("Get Started →", use_container_width=True, key="get_started"):
                 st.session_state["page"] = "Patient Dashboard"
-                st.rerun() # This ensures the sidebar updates on reload
+                st.rerun()  # This ensures the sidebar updates on reload
         with btn_col2:
             st.button("Watch Demo", use_container_width=True, key="watch_demo")
 
@@ -334,11 +381,34 @@ def render_patient_dashboard():
                 "ALT": alt, "AST": ast, "Heart Rate": heart_rate,
                 "Creatinine": creatinine, "Troponin": troponin, "C-reactive Protein": crp,
             }
-            st.session_state["patient_inputs"] = patient_data
-            st.success(
-                "✅ Analysis complete! Review the prediction results here and "
-                "navigate to **Model Metrics** for detailed comparison."
-            )
+
+            try:
+                # Save inputs
+                st.session_state["patient_inputs"] = patient_data
+
+                # Get model + scaled input
+                model = get_model()
+                scaled = apply_scaling(patient_data)
+
+                # Predict probabilities
+                proba = model.predict_proba(scaled)[0]
+                best_idx = max(range(len(proba)), key=lambda i: proba[i])
+                confidence = float(proba[best_idx] * 100.0)
+                disease_name = decode_disease(best_idx)
+
+                st.session_state["prediction"] = {
+                    "class_index": int(best_idx),
+                    "disease_name": disease_name,
+                    "confidence": confidence,
+                    "probabilities": [float(p) for p in proba],
+                }
+
+                st.success(
+                    "✅ Analysis complete! Review the prediction results here and "
+                    "navigate to **Model Metrics** for detailed comparison."
+                )
+            except Exception as e:
+                st.error(f"⚠️ Prediction failed: {e}")
 
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -354,27 +424,46 @@ def render_patient_dashboard():
         )
 
         if "patient_inputs" in st.session_state:
-            # Simulated prediction UI
-            st.markdown("""
-                <div style="background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
-                     padding: 1.5rem; border-radius: 16px; text-align: center; margin-bottom: 1.25rem;">
-                    <div style="font-size: 13px; color: #1e40af; margin-bottom: 0.4rem;">Predicted Condition</div>
-                    <div style="font-size: 22px; font-weight: 800; color: #1e40af;">Heart Disease</div>
-                </div>
+            pred = st.session_state.get("prediction")
 
-                <div style="margin-bottom: 1.25rem;">
-                    <div style="font-size: 12px; color: #64748b; margin-bottom: 0.5rem;">Confidence Score</div>
-                    <div class="confidence-bar">
-                        <div class="confidence-fill" style="width: 94%;"></div>
+            if pred is not None:
+                disease = pred.get("disease_name", "Unknown")
+                confidence = float(pred.get("confidence", 0.0))
+                bar_width = max(5.0, min(100.0, confidence))  # keep bar visible
+                risk_level = classify_risk(disease, confidence)
+
+                risk_label_map = {
+                    "Low": "🟢 Low Risk",
+                    "Moderate": "⚠️ Moderate Risk",
+                    "Borderline": "⚠️ Borderline Risk",
+                    "High": "⚠️ High Risk",
+                }
+                risk_label = risk_label_map.get(risk_level, "⚠️ Risk")
+
+                st.markdown(f"""
+                    <div style="background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+                         padding: 1.5rem; border-radius: 16px; text-align: center; margin-bottom: 1.25rem;">
+                        <div style="font-size: 13px; color: #1e40af; margin-bottom: 0.4rem;">Predicted Condition</div>
+                        <div style="font-size: 22px; font-weight: 800; color: #1e40af;">{disease}</div>
                     </div>
-                    <div style="font-size: 14px; color: #475569; margin-top: 0.4rem; font-weight: 600;">94% Confidence</div>
-                </div>
 
-                <div style="margin-bottom: 1rem;">
-                    <div style="font-size: 12px; color: #64748b; margin-bottom: 0.5rem;">Risk Assessment</div>
-                    <span class="risk-badge high">⚠️ High Risk</span>
-                </div>
-            """, unsafe_allow_html=True)
+                    <div style="margin-bottom: 1.25rem;">
+                        <div style="font-size: 12px; color: #64748b; margin-bottom: 0.5rem;">Confidence Score</div>
+                        <div class="confidence-bar">
+                            <div class="confidence-fill" style="width: {bar_width:.1f}%;"></div>
+                        </div>
+                        <div style="font-size: 14px; color: #475569; margin-top: 0.4rem; font-weight: 600;">
+                            {confidence:.1f}% Confidence
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom: 1rem;">
+                        <div style="font-size: 12px; color: #64748b; margin-bottom: 0.5rem;">Risk Assessment</div>
+                        <span class="risk-badge high">{risk_label}</span>
+                    </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.info("✅ Patient values captured. Click **Run Prediction** to see model output.")
 
             st.markdown("<hr style='margin: 1.25rem 0; border: none; border-top: 1px solid #e2e8f0;'>",
                         unsafe_allow_html=True)

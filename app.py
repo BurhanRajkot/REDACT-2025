@@ -4,6 +4,8 @@ import streamlit as st
 import os
 import pandas as pd
 import json
+import shap
+import numpy as np
 
 # ---------------------------------------------------------
 # PAGE CONFIG
@@ -391,9 +393,31 @@ def render_patient_dashboard():
                 scaled = apply_scaling(patient_data)
 
                 # Predict probabilities
+                def predict_disease(scaled_input, threshold=0.2):
+                    p = model.predict_proba(scaled_input)
+                    if p.max() < threshold and p.argmax() == 2:  # if max prob is less than threshold or predicted as Healthy
+                        sorted_indices = np.argsort(p, axis=1)
+                        descending_indices = sorted_indices[:, ::-1]
+                        second_highest_indices = descending_indices[:, 1]
+                        return p[second_highest_indices], second_highest_indices  # fallback
+                    else:
+                        return p.max(), p.argmax()
+                    
+                def imp_features(scaled_input, prediction):
+                    shap_explainer = shap.TreeExplainer(model, feature_names=FEATURE_ORDER)
+                    shap_values = shap_explainer.shap_values(scaled)[0]
+                    feature_contributions = shap_values[:, prediction]
+                    impotance = np.abs(feature_contributions)
+                    important_f = impotance.argsort()[::-1]
+                    imps = {}
+                    for i in range(5):
+                        imps.append({FEATURE_ORDER[important_f[i]] : feature_contributions[important_f[i]]})
+                    return imps
+
                 proba = model.predict_proba(scaled)[0]
-                best_idx = max(range(len(proba)), key=lambda i: proba[i])
-                confidence = float(proba[best_idx] * 100.0)
+                #best_idx = max(range(len(proba)), key=lambda i: proba[i])
+                #confidence = float(proba[best_idx] * 100.0)
+                confidence, best_idx = predict_disease(scaled)
                 disease_name = decode_disease(best_idx)
 
                 st.session_state["prediction"] = {

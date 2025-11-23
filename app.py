@@ -219,16 +219,7 @@ def render_home():
             </p>
         """, unsafe_allow_html=True)
 
-        btn_col1, btn_col2, _ = st.columns([0.4, 0.4, 0.2])
-        with btn_col1:
-            st.button(
-                "Get Started →", 
-                use_container_width=True, 
-                key="get_started",
-                on_click=navigate_to_dashboard
-            )
-        with btn_col2:
-            st.button("Watch Demo", use_container_width=True, key="watch_demo")
+        st.video("https://www.youtube.com/watch?v=nEA7Sb9RhyY")
 
         st.markdown("""
             <div class="stats-container">
@@ -440,7 +431,7 @@ def render_patient_dashboard():
                 # Predict probabilities
                 def predict_disease(scaled_input, threshold=0.2):
                     p = model.predict_proba(scaled_input)
-                    if p.max() < threshold and p.argmax() == 2:  # if max prob is less than threshold or predicted as Healthy
+                    if p.max() < 0.6 and p.argmax() == 1:  # if max prob is less than threshold or predicted as Healthy
                         sorted_indices = np.argsort(p, axis=1)
                         descending_indices = sorted_indices[:, ::-1]
                         second_highest_indices = descending_indices[:, 1]

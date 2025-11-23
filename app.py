@@ -778,6 +778,7 @@ def render_patient_dashboard():
                     
                     # Prepare export data
                     export_data = {
+                        "ai_clinical_insights": ai_explanation,
                         "patient_info": {
                             "first_name": f_name,
                             "last_name": s_name,
@@ -787,7 +788,6 @@ def render_patient_dashboard():
                         },
                         "clinical_parameters": {},
                         "significant_factors": {},
-                        "ai_clinical_insights": ai_explanation
                     }
                     
                     # Add all clinical parameters

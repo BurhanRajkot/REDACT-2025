@@ -518,3 +518,29 @@ div[data-baseweb='input'] {
     flex-direction: column;
   }
 }
+
+
+/* Fix expander button hover/active states */
+.streamlit-expanderHeader {
+    background-color: transparent !important;
+}
+
+.streamlit-expanderHeader:hover {
+    background-color: rgba(124, 124, 124, 0.337) !important;
+}
+
+.streamlit-expanderHeader:active,
+.streamlit-expanderHeader:focus {
+    background-color: rgba(150, 150, 150, 0.15) !important;
+    color: inherit !important;
+}
+
+/* Ensure text stays visible */
+.streamlit-expanderHeader p {
+    color: #4748483b !important;
+}
+
+/* Fix the expanded state */
+details[open] > summary.streamlit-expanderHeader {
+    background-color: rgba(115, 169, 255, 0.1) !important;
+}

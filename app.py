@@ -145,7 +145,7 @@ if "page" not in st.session_state:
     st.session_state["page"] = "Home"
 
 # 2. Define Page Options
-PAGE_OPTIONS = ["Home", "Patient Dashboard", "Model Metrics"]
+PAGE_OPTIONS = ["Home", "Patient Dashboard", "Patient History"]
 
 # 3. Determine the current index for the sidebar based on session state
 try:
@@ -479,8 +479,7 @@ def render_patient_dashboard():
                 insert_row(f_name, s_name, list(patient_data.values()), confidence, disease_name)
 
                 st.success(
-                    "✅ Analysis complete! Review the prediction results here and "
-                    "navigate to **Model Metrics** for detailed comparison."
+                    "✅ Analysis complete! Review the prediction results here"
                 )
             except Exception as e:
                 st.error(f"⚠️ Prediction failed: {e}")
@@ -509,36 +508,108 @@ def render_patient_dashboard():
             records = cursor.fetchall()
 
             if records:
-                # Display as horizontal cards
-                #cols = st.columns(len(records))
                 for idx, rec in enumerate(records):
                     first_name, last_name, diagnosis, confidence = rec
-                    btn_label = f"{first_name} {last_name}\n{diagnosis} ({confidence:.1f}%)"
-                    if st.button(btn_label, key=f"{first_name} {last_name} {idx}"):
-                        # Load full patient values
+            
+            # Convert bytes to string if needed
+                    if isinstance(diagnosis, bytes):
+                        diagnosis = diagnosis.decode('utf-8')
+                    if isinstance(first_name, bytes):
+                        first_name = first_name.decode('utf-8')
+                    if isinstance(last_name, bytes):
+                        last_name = last_name.decode('utf-8')
+            
+            # Create expandable section for each patient
+                    with st.expander(f"👤 {first_name} {last_name} - {diagnosis} ({confidence:.1f}%)", expanded=False):
+                # Fetch full patient data
                         cursor.execute("""
                             SELECT * FROM patients 
                             WHERE first_name = ? AND last_name = ? AND diagnosis = ? AND confidence = ?
                             LIMIT 1
-                        """, (first_name, last_name, diagnosis, confidence))
+                            """, (first_name, last_name, diagnosis, confidence))
                         full_row = cursor.fetchone()
+                
                         if full_row:
-                           # Extract the 24 clinical values
-                           values = full_row[2:-2]  # assumes table: | first_name | last_name | 24 values | confidence | disease_name
-                           patient_data = dict(zip(FEATURE_ORDER, values))
-                           st.session_state["patient_inputs"] = patient_data
-                           st.session_state["prediction"] = {
-                               "class_index": None,
-                               "disease_name": full_row[-1],
-                               "confidence": full_row[-2],
-                               "probabilities": [],
-                           }
-                           st.markdown("<br>", unsafe_allow_html=True)
-                           st.rerun()
+                    # Map database columns to display names with units
+                            param_mapping = {
+                                "glucose": ("Glucose", "mg/dL"),
+                                "cholesterol": ("Cholesterol", "mg/dL"),
+                                "hemoglobin": ("Hemoglobin", "g/dL"),
+                                "platelets": ("Platelets", "/µL"),
+                                "white_blood_cells": ("White Blood Cells", "/mm³"),
+                                "red_blood_cells": ("Red Blood Cells", "M/µL"),
+                                "hematocrit": ("Hematocrit", "%"),
+                                "mean_corpuscular_volume": ("MCV", "fL"),
+                                "mean_corpuscular_hemoglobin": ("MCH", "pg"),
+                                "mean_corpuscular_hemoglobin_concentration": ("MCHC", "g/dL"),
+                                "insulin": ("Insulin", "µU/mL"),
+                                "bmi": ("BMI", "kg/m²"),
+                                "systolic_blood_pressure": ("Systolic BP", "mmHg"),
+                                "diastolic_blood_pressure": ("Diastolic BP", "mmHg"),
+                                "triglycerides": ("Triglycerides", "mg/dL"),
+                                "hba1c": ("HbA1c", "%"),
+                                "ldl_cholesterol": ("LDL Cholesterol", "mg/dL"),
+                                "hdl_cholesterol": ("HDL Cholesterol", "mg/dL"),
+                                "alt": ("ALT", "U/L"),
+                                "ast": ("AST", "U/L"),
+                                "heart_rate": ("Heart Rate", "bpm"),
+                                "creatinine": ("Creatinine", "mg/dL"),
+                                "troponin": ("Troponin", "ng/mL"),
+                                "c_reactive_protein": ("C-reactive Protein", "mg/L"),
+                            }
+                    
+                    # Extract values (skip first_name, last_name at start and confidence, diagnosis at end)
+                            values = full_row[2:-2]
+                    
+                    # Create dataframe for display
+                            data_rows = []
+                            db_columns = [
+                                "glucose", "cholesterol", "hemoglobin", "platelets", 
+                                "white_blood_cells", "red_blood_cells", "hematocrit",
+                                "mean_corpuscular_volume", "mean_corpuscular_hemoglobin",
+                                "mean_corpuscular_hemoglobin_concentration", "insulin", "bmi",
+                                "systolic_blood_pressure", "diastolic_blood_pressure",
+                                "triglycerides", "hba1c", "ldl_cholesterol", "hdl_cholesterol",
+                                "alt", "ast", "heart_rate", "creatinine", "troponin",
+                                "c_reactive_protein"
+                            ]
+                    
+                            for db_col, value in zip(db_columns, values):
+                                param_name, unit = param_mapping[db_col]
+                        
+                                # Check if value is within normal range
+                                normal_range = NORMAL_RANGES.get(FEATURE_ORDER[db_columns.index(db_col)])
+                                status = "✅"
+                                if normal_range:
+                                    low, high = normal_range
+                                    if value < low:
+                                        status = "🔵 Low"
+                                    elif value > high:
+                                        status = "🔴 High"
+                                    else:
+                                        status = "✅ Normal"
+                        
+                                data_rows.append({
+                                    "Parameter": param_name,
+                                    "Value": f"{value:.2f}" if isinstance(value, float) else str(value),
+                                    "Unit": unit,
+                                    "Status": status
+                                })
+                    
+                            # Display as table
+                            df_display = pd.DataFrame(data_rows)
+                            st.dataframe(
+                                df_display,
+                                use_container_width=True,
+                                hide_index=True,
+                                height=400
+                            )
+                           
             else:
                 st.info("✅ No recent predictions found.")
         except Exception as e:
-                st.error(f"⚠️ Failed to load recent predictions: {e}")
+            st.error(f"⚠️ Failed to load recent predictions: {e}")
+
 
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -701,6 +772,205 @@ def render_model_metrics():
 
         st.markdown('</div>', unsafe_allow_html=True)
 
+# =========================================================
+# PATIENT HISTORY PAGE
+# =========================================================
+def render_patient_history():
+    st.markdown('<div class="page-title">Patient History</div>', unsafe_allow_html=True)
+    st.markdown('<div class="page-subtitle">View and export all past predictions</div>', unsafe_allow_html=True)
+
+    # Fetch all predictions
+    try:
+        cursor.execute("""
+            SELECT * FROM patients
+            ORDER BY ROWID DESC
+        """)
+        all_records = cursor.fetchall()
+
+        if not all_records:
+            st.info("No patient records found. Start by running predictions on the Patient Dashboard.")
+            return
+
+        # Display total count
+        st.markdown(f"""
+            <div style="background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+                 padding: 1rem; border-radius: 12px; margin-bottom: 1.5rem; text-align: center;">
+                <div style="font-size: 14px; color: #1e40af; font-weight: 600;">
+                    Total Records: {len(all_records)}
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
+        # Parameter mapping
+        param_mapping = {
+            "glucose": ("Glucose", "mg/dL"),
+            "cholesterol": ("Cholesterol", "mg/dL"),
+            "hemoglobin": ("Hemoglobin", "g/dL"),
+            "platelets": ("Platelets", "/µL"),
+            "white_blood_cells": ("White Blood Cells", "/mm³"),
+            "red_blood_cells": ("Red Blood Cells", "M/µL"),
+            "hematocrit": ("Hematocrit", "%"),
+            "mean_corpuscular_volume": ("MCV", "fL"),
+            "mean_corpuscular_hemoglobin": ("MCH", "pg"),
+            "mean_corpuscular_hemoglobin_concentration": ("MCHC", "g/dL"),
+            "insulin": ("Insulin", "µU/mL"),
+            "bmi": ("BMI", "kg/m²"),
+            "systolic_blood_pressure": ("Systolic BP", "mmHg"),
+            "diastolic_blood_pressure": ("Diastolic BP", "mmHg"),
+            "triglycerides": ("Triglycerides", "mg/dL"),
+            "hba1c": ("HbA1c", "%"),
+            "ldl_cholesterol": ("LDL Cholesterol", "mg/dL"),
+            "hdl_cholesterol": ("HDL Cholesterol", "mg/dL"),
+            "alt": ("ALT", "U/L"),
+            "ast": ("AST", "U/L"),
+            "heart_rate": ("Heart Rate", "bpm"),
+            "creatinine": ("Creatinine", "mg/dL"),
+            "troponin": ("Troponin", "ng/mL"),
+            "c_reactive_protein": ("C-reactive Protein", "mg/L"),
+        }
+
+        db_columns = [
+            "glucose", "cholesterol", "hemoglobin", "platelets", 
+            "white_blood_cells", "red_blood_cells", "hematocrit",
+            "mean_corpuscular_volume", "mean_corpuscular_hemoglobin",
+            "mean_corpuscular_hemoglobin_concentration", "insulin", "bmi",
+            "systolic_blood_pressure", "diastolic_blood_pressure",
+            "triglycerides", "hba1c", "ldl_cholesterol", "hdl_cholesterol",
+            "alt", "ast", "heart_rate", "creatinine", "troponin",
+            "c_reactive_protein"
+        ]
+
+        # Display each record
+        for idx, full_row in enumerate(all_records):
+            first_name = full_row[0]
+            last_name = full_row[1]
+            diagnosis = full_row[-1]
+            confidence = full_row[-2]
+            values = full_row[2:-2]
+
+            # Convert bytes to string if needed
+            if isinstance(diagnosis, bytes):
+                diagnosis = diagnosis.decode('utf-8')
+            if isinstance(first_name, bytes):
+                first_name = first_name.decode('utf-8')
+            if isinstance(last_name, bytes):
+                last_name = last_name.decode('utf-8')
+
+            # Create expandable section
+            col_expand, col_download = st.columns([5, 1])
+            
+            with col_expand:
+                with st.expander(f"👤 {first_name} {last_name} - {diagnosis} ({confidence:.1f}%)", expanded=False):
+                    # Create two columns for better layout
+                    info_col, table_col = st.columns([1, 2])
+                    
+                    with info_col:
+                        st.markdown(f"""
+                            <div style="background: #f8fafc; padding: 1rem; border-radius: 10px; margin-bottom: 1rem;">
+                                <div style="font-size: 13px; color: #64748b; margin-bottom: 0.5rem;">Patient Information</div>
+                                <div style="font-size: 16px; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">
+                                    {first_name} {last_name}
+                                </div>
+                                <hr style="margin: 0.5rem 0; border: none; border-top: 1px solid #e2e8f0;">
+                                <div style="margin-top: 0.5rem;">
+                                    <div style="font-size: 12px; color: #64748b;">Diagnosis</div>
+                                    <div style="font-size: 14px; font-weight: 600; color: #3b82f6;">{diagnosis}</div>
+                                </div>
+                                <div style="margin-top: 0.5rem;">
+                                    <div style="font-size: 12px; color: #64748b;">Confidence</div>
+                                    <div style="font-size: 14px; font-weight: 600; color: #059669;">{confidence:.1f}%</div>
+                                </div>
+                            </div>
+                        """, unsafe_allow_html=True)
+
+                        # Risk assessment
+                        risk_level = classify_risk(diagnosis, confidence)
+                        risk_colors = {
+                            "Low": "#10b981",
+                            "Moderate": "#f59e0b",
+                            "Borderline": "#f59e0b",
+                            "High": "#ef4444"
+                        }
+                        risk_color = risk_colors.get(risk_level, "#64748b")
+                        
+                        st.markdown(f"""
+                            <div style="background: {risk_color}22; padding: 0.75rem; border-radius: 8px; border-left: 4px solid {risk_color};">
+                                <div style="font-size: 12px; color: #64748b;">Risk Level</div>
+                                <div style="font-size: 14px; font-weight: 700; color: {risk_color};">{risk_level} Risk</div>
+                            </div>
+                        """, unsafe_allow_html=True)
+                    
+                    with table_col:
+                        st.markdown("**Clinical Parameters**")
+                        
+                        # Create dataframe for display
+                        data_rows = []
+                        for db_col, value in zip(db_columns, values):
+                            param_name, unit = param_mapping[db_col]
+                            
+                            # Check if value is within normal range
+                            normal_range = NORMAL_RANGES.get(FEATURE_ORDER[db_columns.index(db_col)])
+                            status = "✅"
+                            if normal_range:
+                                low, high = normal_range
+                                if value < low:
+                                    status = "🔵 Low"
+                                elif value > high:
+                                    status = "🔴 High"
+                                else:
+                                    status = "✅ Normal"
+                            
+                            data_rows.append({
+                                "Parameter": param_name,
+                                "Value": f"{value:.2f}" if isinstance(value, float) else str(value),
+                                "Unit": unit,
+                                "Status": status
+                            })
+                        
+                        # Display as table
+                        df_display = pd.DataFrame(data_rows)
+                        st.dataframe(
+                            df_display,
+                            use_container_width=True,
+                            hide_index=True,
+                            height=400
+                        )
+
+            with col_download:
+                # Prepare JSON data
+                patient_json = {
+                    "patient_info": {
+                        "first_name": first_name,
+                        "last_name": last_name,
+                        "diagnosis": diagnosis,
+                        "confidence": float(confidence)
+                    },
+                    "clinical_parameters": {}
+                }
+                
+                for db_col, value in zip(db_columns, values):
+                    param_name, unit = param_mapping[db_col]
+                    patient_json["clinical_parameters"][param_name] = {
+                        "value": float(value) if isinstance(value, (int, float)) else value,
+                        "unit": unit
+                    }
+                
+                # Convert to JSON string
+                json_str = json.dumps(patient_json, indent=2)
+                
+                # Download button
+                st.download_button(
+                    label="📥",
+                    data=json_str,
+                    file_name=f"{first_name}_{last_name}_{diagnosis.replace(' ', '_')}.json",
+                    mime="application/json",
+                    key=f"download_{idx}",
+                    help="Download as JSON"
+                )
+
+    except Exception as e:
+        st.error(f"⚠️ Failed to load patient history: {e}")
+
 
 # =========================================================
 # ROUTER (Already handled by session state at top)
@@ -713,6 +983,8 @@ elif page == "Patient Dashboard":
     render_patient_dashboard()
 elif page == "Model Metrics":
     render_model_metrics()
+elif page == "Patient History":
+        render_patient_history()
 
 def reload_page():
     if page == "Home":
@@ -721,3 +993,5 @@ def reload_page():
         render_patient_dashboard()
     elif page == "Model Metrics":
         render_model_metrics()
+    elif page == "Patient History":
+        render_patient_history()

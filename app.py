@@ -13,7 +13,7 @@ import sqlite3
 # PAGE CONFIG
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="MediGuard AI",
+    page_title="BodyWise AI - Intelligent Triage Assistant",
     page_icon="🩺",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -164,7 +164,7 @@ with st.sidebar:
                  font-size: 32px; margin-bottom: 1rem; box-shadow: 0 8px 25px rgba(59, 130, 246, 0.4);">
                 🩺
             </div>
-            <h2 style="font-size: 22px; font-weight: 800; margin: 0; color: #ffffff;">MediGuard AI</h2>
+            <h2 style="font-size: 22px; font-weight: 800; margin: 0; color: #ffffff;">BodyWise AI</h2>
             <p style="font-size: 12px; opacity: 0.9; margin-top: 0.25rem;">Intelligent Triage Assistant</p>
         </div>
     """, unsafe_allow_html=True)
@@ -286,70 +286,19 @@ def render_home():
             <div class="hero-badge">⚡ AI-Powered Clinical Decision Support</div>
             <h1 class="hero-title">Intelligent Triage for Better Patient Outcomes</h1>
             <p class="hero-subtitle">
-                MediGuard AI uses advanced machine learning to analyze clinical parameters
+                BodyWise AI uses advanced machine learning to analyze clinical parameters
                 and provide accurate disease predictions, helping healthcare professionals
                 make faster, data-driven decisions.
             </p>
         """, unsafe_allow_html=True)
 
-        st.video("https://www.youtube.com/watch?v=nEA7Sb9RhyY")
-
-        st.markdown("""
-            <div class="stats-container">
-                <div class="stat-card">
-                    <div class="stat-number">95%+</div>
-                    <div class="stat-label">Accuracy Rate</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number">50K+</div>
-                    <div class="stat-label">Predictions Made</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number">24/7</div>
-                    <div class="stat-label">Availability</div>
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
-
-    with col2:
-        st.markdown("""
-            <div class="live-prediction-card">
-                <div class="live-header">
-                    <div class="live-dot"></div>
-                    <div>
-                        <div class="live-title">Live Prediction</div>
-                        <div class="live-subtitle">Patient Analysis in Progress</div>
-                    </div>
-                </div>
-
-                <div style="margin: 1.5rem 0;">
-                    <div class="confidence-label">Predicted Condition</div>
-                    <div class="prediction-badge">Heart Disease</div>
-                </div>
-
-                <div class="confidence-bar-container">
-                    <div class="confidence-label">Confidence Score</div>
-                    <div class="confidence-bar">
-                        <div class="confidence-fill" style="width: 94%;"></div>
-                    </div>
-                    <div class="confidence-text">94% Confidence</div>
-                </div>
-
-                <div style="margin-top: 1.5rem;">
-                    <div class="confidence-label">Risk Assessment</div>
-                    <span class="risk-badge high">● High Risk - Immediate Attention Required</span>
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
-
-    st.markdown('</div>', unsafe_allow_html=True)
 
     # Features Section
     st.markdown("<div style='height: 2.5rem;'></div>", unsafe_allow_html=True)
     st.markdown("""
         <div style="text-align: center; margin-bottom: 2.5rem;">
             <h2 style="font-size: 32px; font-weight: 800; color: #1e293b; margin-bottom: 0.5rem;">
-                Why Choose MediGuard AI?
+                Why Choose BodyWise AI?
             </h2>
             <p style="font-size: 15px; color: #64748b;">
                 Advanced AI technology designed to support healthcare professionals with accurate, explainable predictions.
@@ -384,7 +333,7 @@ def render_home():
             <div>
                 <div class="cta-title">Ready to Transform Patient Care?</div>
                 <div class="cta-subtitle">
-                    Join healthcare teams using MediGuard AI to improve triage accuracy and patient outcomes.
+                    Join healthcare teams using BodyWise AI to improve triage accuracy and patient outcomes.
                 </div>
             </div>
         </div>
@@ -394,7 +343,7 @@ def render_home():
     st.markdown("""
         <div class="footer-section">
             <div class="footer-text">
-                © 2024 MediGuard AI. All rights reserved. | Empowering clinicians with AI-driven decision support.
+                © 2024 BodyWise AI. All rights reserved. | Empowering clinicians with AI-driven decision support.
             </div>
         </div>
     """, unsafe_allow_html=True)

@@ -8,6 +8,7 @@ import json
 import shap
 import numpy as np
 import sqlite3
+from dotenv import load_dotenv
 
 # ---------------------------------------------------------
 # PAGE CONFIG
@@ -206,7 +207,8 @@ import google.generativeai as genai
 # ---------------------------------------------------------
 # GEMINI API CONFIGURATION
 # ---------------------------------------------------------
-GEMINI_API_KEY = "AIzaSyAsOgkiv528rSru_RkrJ-geDh7J4k8oO_Q"  # Replace with your actual API key
+load_dotenv()  # Load environment variables from .env file
+GEMINI_API_KEY = os.getenv("GEMINI_API")  # Replace with your actual API key
 genai.configure(api_key=GEMINI_API_KEY)
 
 def generate_diagnosis_explanation(disease_name: str, confidence: float, shap_values: dict, patient_data: dict) -> str:

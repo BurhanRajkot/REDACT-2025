@@ -195,6 +195,79 @@ with st.sidebar:
         </div>
     """, unsafe_allow_html=True)
 
+#=============================
+# GENAI
+#=============================
+
+# Add this at the top with other imports
+import google.generativeai as genai
+
+# Add this after your constants section (around line 65)
+# ---------------------------------------------------------
+# GEMINI API CONFIGURATION
+# ---------------------------------------------------------
+GEMINI_API_KEY = "AIzaSyAsOgkiv528rSru_RkrJ-geDh7J4k8oO_Q"  # Replace with your actual API key
+genai.configure(api_key=GEMINI_API_KEY)
+
+def generate_diagnosis_explanation(disease_name: str, confidence: float, shap_values: dict, patient_data: dict) -> str:
+    try:
+        if not shap_values:
+            return "No significant contributing factors identified."
+        
+        # Sort SHAP values by absolute importance
+        sorted_shaps = sorted(shap_values.items(), key=lambda x: abs(x[1]), reverse=True)
+        
+        # Build factor descriptions with actual values and normal ranges
+        contributing_factors = []
+        for feature, shap_val in sorted_shaps:
+            actual_value = patient_data.get(feature, "N/A")
+            normal_range = NORMAL_RANGES.get(feature, None)
+            
+            status = ""
+            if normal_range and actual_value != "N/A":
+                low, high = normal_range
+                if actual_value < low:
+                    status = f"below normal range ({low}-{high})"
+                elif actual_value > high:
+                    status = f"above normal range ({low}-{high})"
+                else:
+                    status = f"within normal range ({low}-{high})"
+            
+            direction = "increases" if shap_val > 0 else "decreases"
+            contributing_factors.append(
+                f"- {feature}: {actual_value} ({status}) - {direction} risk [Impact: {shap_val:.3f}]"
+            )
+        
+        # Create prompt for Gemini
+        prompt = f"""You are a medical AI assistant helping clinicians understand diagnostic predictions from a machine learning model.
+
+Prediction Results:
+- Predicted Condition: {disease_name}
+- Model Confidence: {confidence:.1f}%
+
+Significant Contributing Factors:
+The following parameters have significant SHAP values, meaning they are the key drivers of this prediction. Positive SHAP values increase risk, negative values decrease it:
+
+{chr(10).join(contributing_factors)}
+
+Please provide a concise clinical explanation (4-5 sentences) that:
+1. Identifies which 2-3 factors are most strongly influencing this diagnosis
+2. Explains the clinical significance of abnormal values (if any)
+3. Describes potential risks or complications associated with these findings
+4. Provides actionable monitoring recommendations for the healthcare team
+
+Use professional medical terminology but keep it clear and actionable. Focus on the most clinically relevant insights."""
+
+        # Call Gemini API
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        response = model.generate_content(prompt)
+        
+        return response.text
+    
+    except Exception as e:
+        return f"⚠️ Unable to generate explanation: {str(e)}"
+
+
 
 # =========================================================
 # HOME PAGE
@@ -681,9 +754,113 @@ def render_patient_dashboard():
             ax.barh(df["Feature"], df["SHAP"], color=colors)
             ax.set_title("SHAP Contributions (Red = Higher Risk)")
             st.pyplot(fig)
+            shap_bar_chart(saphs)
 
+        if saphs:  # Only show if SHAP values exist
+    
+            st.markdown("<div style='height: 1rem;'></div>", unsafe_allow_html=True)
             
-        shap_bar_chart(saphs)
+            # Generate AI explanation automatically (only once per prediction)
+            pred = st.session_state.get("prediction", {})
+            patient_data = st.session_state.get("patient_inputs", {})
+            
+            # Check if we need to generate for this prediction
+            current_prediction_id = f"{pred.get('disease_name', '')}_{pred.get('confidence', 0)}"
+            if st.session_state.get("last_prediction_id") != current_prediction_id:
+                with st.spinner("🤖 Generating AI insights..."):
+                    # Generate AI explanation
+                    ai_explanation = generate_diagnosis_explanation(
+                        disease_name=pred.get("disease_name", "Unknown"),
+                        confidence=pred.get("confidence", 0.0),
+                        shap_values=saphs,
+                        patient_data=patient_data
+                    )
+                    
+                    # Prepare export data
+                    export_data = {
+                        "patient_info": {
+                            "first_name": f_name,
+                            "last_name": s_name,
+                            "diagnosis": pred.get("disease_name", "Unknown"),
+                            "confidence": float(pred.get("confidence", 0.0)),
+                            "risk_level": classify_risk(pred.get("disease_name", "Unknown"), pred.get("confidence", 0.0))
+                        },
+                        "clinical_parameters": {},
+                        "significant_factors": {},
+                        "ai_clinical_insights": ai_explanation
+                    }
+                    
+                    # Add all clinical parameters
+                    param_mapping = {
+                        "Glucose": "mg/dL", "Cholesterol": "mg/dL", "Hemoglobin": "g/dL",
+                        "Platelets": "/µL", "White Blood Cells": "/mm³", "Red Blood Cells": "M/µL",
+                        "Hematocrit": "%", "Mean Corpuscular Volume": "fL",
+                        "Mean Corpuscular Hemoglobin": "pg", "Mean Corpuscular Hemoglobin Concentration": "g/dL",
+                        "Insulin": "µU/mL", "BMI": "kg/m²", "Systolic Blood Pressure": "mmHg",
+                        "Diastolic Blood Pressure": "mmHg", "Triglycerides": "mg/dL",
+                        "HbA1c": "%", "LDL Cholesterol": "mg/dL", "HDL Cholesterol": "mg/dL",
+                        "ALT": "U/L", "AST": "U/L", "Heart Rate": "bpm",
+                        "Creatinine": "mg/dL", "Troponin": "ng/mL", "C-reactive Protein": "mg/L"
+                    }
+                    
+                    for param, value in patient_data.items():
+                        unit = param_mapping.get(param, "")
+                        normal_range = NORMAL_RANGES.get(param, None)
+                        status = "normal"
+                        if normal_range:
+                            low, high = normal_range
+                            if value < low:
+                                status = "below normal"
+                            elif value > high:
+                                status = "above normal"
+                        
+                        export_data["clinical_parameters"][param] = {
+                            "value": float(value) if isinstance(value, (int, float)) else value,
+                            "unit": unit,
+                            "status": status,
+                            "normal_range": f"{normal_range[0]}-{normal_range[1]}" if normal_range else "N/A"
+                        }
+                    
+                    # Add SHAP values
+                    for feature, shap_val in saphs.items():
+                        export_data["significant_factors"][feature] = {
+                            "shap_value": float(shap_val),
+                            "impact": "increases_risk" if shap_val > 0 else "decreases_risk",
+                            "current_value": float(patient_data.get(feature, 0))
+                        }
+                    
+                    # Store for download
+                    st.session_state["report_ready"] = json.dumps(export_data, indent=2)
+                    st.session_state["report_filename"] = f"{f_name}_{s_name}_AI_diagnosis_report.json"
+                    st.session_state["last_prediction_id"] = current_prediction_id
+            
+            # Show download button (report is already generated)
+            if "report_ready" in st.session_state:
+                st.download_button(
+                    label="📥 Download AI Insights Report",
+                    data=st.session_state["report_ready"],
+                    file_name=st.session_state["report_filename"],
+                    mime="application/json",
+                    key="download_ai_report_btn",
+                    use_container_width=True,
+                    type="primary"
+                )
+
+                if st.session_state.get("show_ai_message", False):
+                    # Extract AI explanation from the JSON
+                    report_data = json.loads(st.session_state["report_ready"])
+                    ai_message = report_data.get("ai_clinical_insights", "No insights available")
+                    
+                    st.markdown("<div style='margin-top: 1.5rem;'></div>", unsafe_allow_html=True)
+                    st.markdown("**🤖 AI Clinical Insights**")
+                    st.markdown(
+                        f"<div style='background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); "
+                        f"padding: 1.25rem; border-radius: 12px; border-left: 4px solid #3b82f6; "
+                        f"font-size: 14px; line-height: 1.8; color: #1e293b; margin-top: 0.5rem;'>"
+                        f"{ai_message}"
+                        f"</div>",
+                        unsafe_allow_html=True
+                    )
 
 #-----------------------------    # Parameters Exceeding Normal Ranges
 

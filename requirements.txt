@@ -7,3 +7,4 @@ joblib
 matplotlib
 shap
 google-generativeai
+xgboost

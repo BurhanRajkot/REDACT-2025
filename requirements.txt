@@ -8,3 +8,5 @@ matplotlib
 shap
 google-generativeai
 xgboost
+dotenv
+python-dotenv

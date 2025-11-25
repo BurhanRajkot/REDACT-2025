@@ -1,3 +1,6 @@
+# ---------------------------------------------------------
+# IMPORTS
+# ---------------------------------------------------------
 from BackEnd.model_loader import load_model, load_medical_ranges
 from BackEnd.scaling_bridge import apply_scaling
 import streamlit as st
@@ -9,6 +12,7 @@ import shap
 import numpy as np
 import sqlite3
 from dotenv import load_dotenv
+import google.generativeai as genai
 
 # ---------------------------------------------------------
 # PAGE CONFIG
@@ -28,7 +32,6 @@ def load_css(path: str):
         with open(path, "r") as f:
             st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
-# adjust path if needed
 load_css("Styles/custom.css")
 
 # ---------------------------------------------------------
@@ -109,11 +112,9 @@ def classify_risk(disease_name: str, confidence: float) -> str:
     else:
         return "Borderline"
 
-
 #---------------------------------------------------------
-#DATABASE CONNECTION (FOR FUTURE USE)
+# DATABASE CONNECTION
 #---------------------------------------------------------
-
 DB_PATH = os.path.join('Database', 'mediBase.db')
 
 @st.cache_resource
@@ -127,35 +128,31 @@ cursor = conn.cursor()
 def insert_row(first_name, last_name, values, confidence, disease_name):
     if len(values) != 24:
         raise ValueError("You must provide exactly 24 values.")
-    
+
     # Combine all values into a single list
     all_values = [first_name, last_name] + values + [confidence, disease_name]
-    
-    # Create placeholders for all 29 values (3 + 24 + 2)
+
+    # Create placeholders for all 29 values (2 names + 24 params + confidence + diagnosis)
     placeholders = ", ".join(["?"] * len(all_values))
-    
-    # Execute the query
+
     cursor.execute(f"INSERT INTO patients VALUES ({placeholders})", all_values)
     conn.commit()
 
 # ---------------------------------------------------------
-# NAVIGATION LOGIC (FIXED)
+# NAV STATE
 # ---------------------------------------------------------
-# 1. Initialize Page Session State if not exists
 if "page" not in st.session_state:
     st.session_state["page"] = "Home"
 
-# 2. Define Page Options
-PAGE_OPTIONS = ["Home", "Patient Dashboard", "Patient History"]
+PAGE_OPTIONS = ["Home", "Patient Dashboard", "Model Metrics", "Patient History"]
 
-# 3. Determine the current index for the sidebar based on session state
 try:
     current_index = PAGE_OPTIONS.index(st.session_state["page"])
 except ValueError:
     current_index = 0
 
 # ---------------------------------------------------------
-# SIDEBAR
+# SIDEBAR (ONLY NAV HERE)
 # ---------------------------------------------------------
 with st.sidebar:
     st.markdown("""
@@ -170,7 +167,6 @@ with st.sidebar:
         </div>
     """, unsafe_allow_html=True)
 
-    # 4. Use the dynamic index for the radio button
     selected_nav = st.radio(
         "Navigation",
         PAGE_OPTIONS,
@@ -178,7 +174,6 @@ with st.sidebar:
         key="nav_radio_widget"
     )
 
-    # 5. Sync Sidebar Selection with Session State
     if selected_nav != st.session_state["page"]:
         st.session_state["page"] = selected_nav
         st.rerun()
@@ -199,32 +194,25 @@ with st.sidebar:
 #=============================
 # GENAI
 #=============================
-
-# Add this at the top with other imports
-import google.generativeai as genai
-
-# Add this after your constants section (around line 65)
-# ---------------------------------------------------------
-# GEMINI API CONFIGURATION
-# ---------------------------------------------------------
 load_dotenv()  # Load environment variables from .env file
-GEMINI_API_KEY = os.getenv("GEMINI_API")  # Replace with your actual API key
-genai.configure(api_key=GEMINI_API_KEY)
+GEMINI_API_KEY = os.getenv("GEMINI_API")
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
 
 def generate_diagnosis_explanation(disease_name: str, confidence: float, shap_values: dict, patient_data: dict) -> str:
     try:
         if not shap_values:
             return "No significant contributing factors identified."
-        
+
         # Sort SHAP values by absolute importance
         sorted_shaps = sorted(shap_values.items(), key=lambda x: abs(x[1]), reverse=True)
-        
+
         # Build factor descriptions with actual values and normal ranges
         contributing_factors = []
         for feature, shap_val in sorted_shaps:
             actual_value = patient_data.get(feature, "N/A")
             normal_range = NORMAL_RANGES.get(feature, None)
-            
+
             status = ""
             if normal_range and actual_value != "N/A":
                 low, high = normal_range
@@ -234,13 +222,12 @@ def generate_diagnosis_explanation(disease_name: str, confidence: float, shap_va
                     status = f"above normal range ({low}-{high})"
                 else:
                     status = f"within normal range ({low}-{high})"
-            
+
             direction = "increases" if shap_val > 0 else "decreases"
             contributing_factors.append(
                 f"- {feature}: {actual_value} ({status}) - {direction} risk [Impact: {shap_val:.3f}]"
             )
-        
-        # Create prompt for Gemini
+
         prompt = f"""You are a medical AI assistant helping clinicians understand diagnostic predictions from a machine learning model.
 
 Prediction Results:
@@ -260,24 +247,20 @@ Please provide a concise clinical explanation (4-5 sentences) that:
 
 Use professional medical terminology but keep it clear and actionable. Focus on the most clinically relevant insights."""
 
-        # Call Gemini API
+        if not GEMINI_API_KEY:
+            return "⚠️ Gemini API key not configured. Unable to generate explanation."
+
         model = genai.GenerativeModel('gemini-2.5-flash')
         response = model.generate_content(prompt)
-        
+
         return response.text
-    
+
     except Exception as e:
         return f"⚠️ Unable to generate explanation: {str(e)}"
-
-
 
 # =========================================================
 # HOME PAGE
 # =========================================================
-def navigate_to_dashboard():
-    """Callback function to change the current page state."""
-    st.session_state["page"] = "Patient Dashboard"
-
 def render_home():
     st.markdown('<div class="hero-section">', unsafe_allow_html=True)
 
@@ -293,7 +276,6 @@ def render_home():
                 make faster, data-driven decisions.
             </p>
         """, unsafe_allow_html=True)
-
 
     # Features Section
     st.markdown("<div style='height: 2.5rem;'></div>", unsafe_allow_html=True)
@@ -350,7 +332,6 @@ def render_home():
         </div>
     """, unsafe_allow_html=True)
 
-
 # =========================================================
 # PATIENT DASHBOARD PAGE
 # =========================================================
@@ -362,7 +343,6 @@ def render_patient_dashboard():
 
     # ------------------- LEFT: INPUTS -------------------
     with col1:
-        #st.markdown('<div class="modern-card">', unsafe_allow_html=True)
         st.markdown("#### Enter Clinical Parameters")
         st.markdown(
             "<div style='color: #64748b; font-size: 14px; margin-bottom: 1.5rem;'>"
@@ -371,7 +351,7 @@ def render_patient_dashboard():
             unsafe_allow_html=True,
         )
 
-        # Vital Signs
+        # Patient Details
         st.markdown('<div class="section-header">Patient Details</div>', unsafe_allow_html=True)
         v1, v2 = st.columns(2)
         f_name = v1.text_input("First Name", value="", key="fn")
@@ -430,7 +410,10 @@ def render_patient_dashboard():
         crp = c2.number_input("CRP (mg/L)", 0.0, 3.0, 1.0)
 
         st.markdown("<div style='height: 1rem;'></div>", unsafe_allow_html=True)
+
+        # Local container to hold SHAP for this run
         saphs = {}
+
         if st.button("🔍 Run Prediction", use_container_width=True, type="primary"):
             patient_data = {
                 "Glucose": glucose, "Cholesterol": cholesterol, "Hemoglobin": hemoglobin,
@@ -443,30 +426,29 @@ def render_patient_dashboard():
                 "ALT": alt, "AST": ast, "Heart Rate": heart_rate,
                 "Creatinine": creatinine, "Troponin": troponin, "C-reactive Protein": crp,
             }
-        
+
             try:
-                # Save inputs
                 st.session_state["patient_inputs"] = patient_data
 
-                # Get model + scaled input
                 model = get_model()
                 scaled = apply_scaling(patient_data)
 
-                # Predict probabilities
-                def predict_disease(scaled_input, threshold=0.2):
-                    p = model.predict_proba(scaled_input)
-                    if p.max() < 0.6 and p.argmax() == 1:  # if max prob is less than threshold or predicted as Healthy
-                        sorted_indices = np.argsort(p, axis=1)
-                        descending_indices = sorted_indices[:, ::-1]
-                        second_highest_indices = descending_indices[:, 1]
-                        return p[second_highest_indices], second_highest_indices  # fallback
+                def predict_disease(scaled_input):
+                    p = model.predict_proba(scaled_input)[0]
+                    max_prob = p.max()
+                    best_idx = int(p.argmax())
+                    # fallback logic if Healthy + low confidence
+                    if max_prob < 0.6 and best_idx == 1 and len(p) > 1:
+                        sorted_indices = np.argsort(p)[::-1]
+                        second_idx = int(sorted_indices[1])
+                        return float(p[second_idx] * 100.0), second_idx, p
                     else:
-                        return float(p.max()*100), p.argmax()
-                    
-                def imp_features(scaled_input, prediction):
+                        return float(max_prob * 100.0), best_idx, p
+
+                def imp_features(scaled_input, prediction_idx):
                     shap_explainer = shap.TreeExplainer(model, feature_names=FEATURE_ORDER)
                     shap_values = shap_explainer.shap_values(scaled_input)[0]
-                    feature_contributions = shap_values[:, prediction]
+                    feature_contributions = shap_values[:, prediction_idx]
                     importance = np.abs(feature_contributions)
                     max_imp = importance.max()
                     threshold = 0.1 * max_imp
@@ -475,48 +457,42 @@ def render_patient_dashboard():
                     important_features = {}
 
                     if len(idx) < 3:
-                        top5 = importance.argsort()[::-1][:3]
-                        for i in top5:
+                        top3 = importance.argsort()[::-1][:3]
+                        for i in top3:
                             important_features[FEATURE_ORDER[i]] = float(feature_contributions[i])
                         return important_features
 
                     for i in idx:
                         important_features[FEATURE_ORDER[i]] = float(feature_contributions[i])
 
-                        return important_features
+                    return important_features
 
-                proba = model.predict_proba(scaled)[0]
-                #best_idx = max(range(len(proba)), key=lambda i: proba[i])
-                #confidence = float(proba[best_idx] * 100.0)
-                confidence, best_idx = predict_disease(scaled)
+                confidence, best_idx, proba = predict_disease(scaled)
                 disease_name = decode_disease(best_idx)
 
                 saphs = imp_features(scaled, best_idx)
 
+                # store for right panel / other pages
                 st.session_state["prediction"] = {
                     "class_index": int(best_idx),
                     "disease_name": disease_name,
                     "confidence": confidence,
-                    "probabilities": [float(p) for p in proba],
+                    "probabilities": [float(pv) for pv in proba],
                 }
+                st.session_state["shap_values"] = saphs
 
                 insert_row(f_name, s_name, list(patient_data.values()), confidence, disease_name)
 
-                st.success(
-                    "✅ Analysis complete! Review the prediction results here"
-                )
+                st.success("✅ Analysis complete! Review the prediction results on the right.")
             except Exception as e:
                 st.error(f"⚠️ Prediction failed: {e}")
 
-        st.markdown('</div>', unsafe_allow_html=True)
-
     # ------------------- RIGHT: RESULT & GRAPH -------------------
     with col2:
-        #st.markdown('<div class="modern-card" style="min-height: 480px;">', unsafe_allow_html=True)
         st.markdown("#### Recent Predictions", unsafe_allow_html=True)
         st.markdown(
             "<div style='color: #64748b; font-size: 13px; margin-bottom: 1rem;'>"
-            "Click a past diagnosis to reload patient data"
+            "Click a past diagnosis to view detailed parameters"
             "</div>",
             unsafe_allow_html=True,
         )
@@ -524,7 +500,7 @@ def render_patient_dashboard():
         # Fetch last 3 predictions
         try:
             cursor.execute("""
-                SELECT first_name, last_name, diagnosis, confidence 
+                SELECT first_name, last_name, diagnosis, confidence
                 FROM patients
                 ORDER BY ROWID DESC
                 LIMIT 3
@@ -534,27 +510,24 @@ def render_patient_dashboard():
             if records:
                 for idx, rec in enumerate(records):
                     first_name, last_name, diagnosis, confidence = rec
-            
-            # Convert bytes to string if needed
+
+                    # Convert bytes to string if needed
                     if isinstance(diagnosis, bytes):
                         diagnosis = diagnosis.decode('utf-8')
                     if isinstance(first_name, bytes):
                         first_name = first_name.decode('utf-8')
                     if isinstance(last_name, bytes):
                         last_name = last_name.decode('utf-8')
-            
-            # Create expandable section for each patient
+
                     with st.expander(f"👤 {first_name} {last_name} - {diagnosis} ({confidence:.1f}%)", expanded=False):
-                # Fetch full patient data
                         cursor.execute("""
-                            SELECT * FROM patients 
+                            SELECT * FROM patients
                             WHERE first_name = ? AND last_name = ? AND diagnosis = ? AND confidence = ?
                             LIMIT 1
-                            """, (first_name, last_name, diagnosis, confidence))
+                        """, (first_name, last_name, diagnosis, confidence))
                         full_row = cursor.fetchone()
-                
+
                         if full_row:
-                    # Map database columns to display names with units
                             param_mapping = {
                                 "glucose": ("Glucose", "mg/dL"),
                                 "cholesterol": ("Cholesterol", "mg/dL"),
@@ -581,14 +554,12 @@ def render_patient_dashboard():
                                 "troponin": ("Troponin", "ng/mL"),
                                 "c_reactive_protein": ("C-reactive Protein", "mg/L"),
                             }
-                    
-                    # Extract values (skip first_name, last_name at start and confidence, diagnosis at end)
+
                             values = full_row[2:-2]
-                    
-                    # Create dataframe for display
+
                             data_rows = []
                             db_columns = [
-                                "glucose", "cholesterol", "hemoglobin", "platelets", 
+                                "glucose", "cholesterol", "hemoglobin", "platelets",
                                 "white_blood_cells", "red_blood_cells", "hematocrit",
                                 "mean_corpuscular_volume", "mean_corpuscular_hemoglobin",
                                 "mean_corpuscular_hemoglobin_concentration", "insulin", "bmi",
@@ -597,11 +568,10 @@ def render_patient_dashboard():
                                 "alt", "ast", "heart_rate", "creatinine", "troponin",
                                 "c_reactive_protein"
                             ]
-                    
+
                             for db_col, value in zip(db_columns, values):
                                 param_name, unit = param_mapping[db_col]
-                        
-                                # Check if value is within normal range
+
                                 normal_range = NORMAL_RANGES.get(FEATURE_ORDER[db_columns.index(db_col)])
                                 status = "✅"
                                 if normal_range:
@@ -612,15 +582,14 @@ def render_patient_dashboard():
                                         status = "🔴 High"
                                     else:
                                         status = "✅ Normal"
-                        
+
                                 data_rows.append({
                                     "Parameter": param_name,
                                     "Value": f"{value:.2f}" if isinstance(value, float) else str(value),
                                     "Unit": unit,
                                     "Status": status
                                 })
-                    
-                            # Display as table
+
                             df_display = pd.DataFrame(data_rows)
                             st.dataframe(
                                 df_display,
@@ -628,18 +597,12 @@ def render_patient_dashboard():
                                 hide_index=True,
                                 height=400
                             )
-                           
             else:
                 st.info("✅ No recent predictions found.")
         except Exception as e:
             st.error(f"⚠️ Failed to load recent predictions: {e}")
 
-
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        #-----------------------------
-
-        
+        # ---------------- Prediction result card ----------------
         st.markdown("#### Disease Prediction Result")
         st.markdown(
             "<div style='color: #64748b; font-size: 13px; margin-bottom: 1.25rem;'>"
@@ -654,7 +617,7 @@ def render_patient_dashboard():
             if pred is not None:
                 disease = pred.get("disease_name", "Unknown")
                 confidence = float(pred.get("confidence", 0.0))
-                bar_width = max(5.0, min(100.0, confidence))  # keep bar visible
+                bar_width = max(5.0, min(100.0, confidence))
                 risk_level = classify_risk(disease, confidence)
 
                 risk_label_map = {
@@ -692,42 +655,40 @@ def render_patient_dashboard():
 
             st.markdown("<hr style='margin: 1.25rem 0; border: none; border-top: 1px solid #e2e8f0;'>",
                         unsafe_allow_html=True)
-            
+
+        # ---------------- SHAP + AI explanation ----------------
         def shap_bar_chart(imps: dict):
             df = pd.DataFrame({
                 "Feature": list(imps.keys()),
                 "SHAP": list(imps.values())
             })
-
             colors = ["red" if v > 0 else "blue" for v in df["SHAP"]]
 
             fig, ax = plt.subplots(figsize=(6, 4))
             ax.barh(df["Feature"], df["SHAP"], color=colors)
             ax.set_title("SHAP Contributions (Red = Higher Risk)")
             st.pyplot(fig)
-            shap_bar_chart(saphs)
 
-        if saphs:  # Only show if SHAP values exist
-    
+        # Use stored SHAP from last run
+        saphs_state = st.session_state.get("shap_values", {})
+
+        if saphs_state:
+            shap_bar_chart(saphs_state)
             st.markdown("<div style='height: 1rem;'></div>", unsafe_allow_html=True)
-            
-            # Generate AI explanation automatically (only once per prediction)
+
             pred = st.session_state.get("prediction", {})
             patient_data = st.session_state.get("patient_inputs", {})
-            
-            # Check if we need to generate for this prediction
+
             current_prediction_id = f"{pred.get('disease_name', '')}_{pred.get('confidence', 0)}"
             if st.session_state.get("last_prediction_id") != current_prediction_id:
                 with st.spinner("🤖 Generating AI insights..."):
-                    # Generate AI explanation
                     ai_explanation = generate_diagnosis_explanation(
                         disease_name=pred.get("disease_name", "Unknown"),
                         confidence=pred.get("confidence", 0.0),
-                        shap_values=saphs,
+                        shap_values=saphs_state,
                         patient_data=patient_data
                     )
-                    
-                    # Prepare export data
+
                     export_data = {
                         "ai_clinical_insights": ai_explanation,
                         "patient_info": {
@@ -740,8 +701,7 @@ def render_patient_dashboard():
                         "clinical_parameters": {},
                         "significant_factors": {},
                     }
-                    
-                    # Add all clinical parameters
+
                     param_mapping = {
                         "Glucose": "mg/dL", "Cholesterol": "mg/dL", "Hemoglobin": "g/dL",
                         "Platelets": "/µL", "White Blood Cells": "/mm³", "Red Blood Cells": "M/µL",
@@ -753,7 +713,7 @@ def render_patient_dashboard():
                         "ALT": "U/L", "AST": "U/L", "Heart Rate": "bpm",
                         "Creatinine": "mg/dL", "Troponin": "ng/mL", "C-reactive Protein": "mg/L"
                     }
-                    
+
                     for param, value in patient_data.items():
                         unit = param_mapping.get(param, "")
                         normal_range = NORMAL_RANGES.get(param, None)
@@ -764,28 +724,25 @@ def render_patient_dashboard():
                                 status = "below normal"
                             elif value > high:
                                 status = "above normal"
-                        
+
                         export_data["clinical_parameters"][param] = {
                             "value": float(value) if isinstance(value, (int, float)) else value,
                             "unit": unit,
                             "status": status,
                             "normal_range": f"{normal_range[0]}-{normal_range[1]}" if normal_range else "N/A"
                         }
-                    
-                    # Add SHAP values
-                    for feature, shap_val in saphs.items():
+
+                    for feature, shap_val in saphs_state.items():
                         export_data["significant_factors"][feature] = {
                             "shap_value": float(shap_val),
                             "impact": "increases_risk" if shap_val > 0 else "decreases_risk",
                             "current_value": float(patient_data.get(feature, 0))
                         }
-                    
-                    # Store for download
+
                     st.session_state["report_ready"] = json.dumps(export_data, indent=2)
                     st.session_state["report_filename"] = f"{f_name}_{s_name}_AI_diagnosis_report.json"
                     st.session_state["last_prediction_id"] = current_prediction_id
-            
-            # Show download button (report is already generated)
+
             if "report_ready" in st.session_state:
                 st.download_button(
                     label="📥 Download AI Insights Report",
@@ -796,25 +753,6 @@ def render_patient_dashboard():
                     use_container_width=True,
                     type="primary"
                 )
-
-                if st.session_state.get("show_ai_message", False):
-                    # Extract AI explanation from the JSON
-                    report_data = json.loads(st.session_state["report_ready"])
-                    ai_message = report_data.get("ai_clinical_insights", "No insights available")
-                    
-                    st.markdown("<div style='margin-top: 1.5rem;'></div>", unsafe_allow_html=True)
-                    st.markdown("**🤖 AI Clinical Insights**")
-                    st.markdown(
-                        f"<div style='background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); "
-                        f"padding: 1.25rem; border-radius: 12px; border-left: 4px solid #3b82f6; "
-                        f"font-size: 14px; line-height: 1.8; color: #1e293b; margin-top: 0.5rem;'>"
-                        f"{ai_message}"
-                        f"</div>",
-                        unsafe_allow_html=True
-                    )
-
-#-----------------------------    # Parameters Exceeding Normal Ranges
-
 
 # =========================================================
 # MODEL METRICS PAGE
@@ -896,8 +834,7 @@ def render_model_metrics():
         """, unsafe_allow_html=True)
 
         st.markdown("<hr style='margin: 1rem 0; border-top: 1px solid #e2e8f0;'>", unsafe_allow_html=True)
-        st.info("💡 Actual model metrics (precision, recall, AUC-ROC) will be displayed here once the ML model is integrated.")
-
+        st.info("💡 Actual model metrics (precision, recall, AUC-ROC) can be displayed here once available.")
         st.markdown('</div>', unsafe_allow_html=True)
 
 # =========================================================
@@ -907,7 +844,6 @@ def render_patient_history():
     st.markdown('<div class="page-title">Patient History</div>', unsafe_allow_html=True)
     st.markdown('<div class="page-subtitle">View and export all past predictions</div>', unsafe_allow_html=True)
 
-    # Fetch all predictions
     try:
         cursor.execute("""
             SELECT * FROM patients
@@ -919,7 +855,6 @@ def render_patient_history():
             st.info("No patient records found. Start by running predictions on the Patient Dashboard.")
             return
 
-        # Display total count
         st.markdown(f"""
             <div style="background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
                  padding: 1rem; border-radius: 12px; margin-bottom: 1.5rem; text-align: center;">
@@ -929,7 +864,6 @@ def render_patient_history():
             </div>
         """, unsafe_allow_html=True)
 
-        # Parameter mapping
         param_mapping = {
             "glucose": ("Glucose", "mg/dL"),
             "cholesterol": ("Cholesterol", "mg/dL"),
@@ -958,7 +892,7 @@ def render_patient_history():
         }
 
         db_columns = [
-            "glucose", "cholesterol", "hemoglobin", "platelets", 
+            "glucose", "cholesterol", "hemoglobin", "platelets",
             "white_blood_cells", "red_blood_cells", "hematocrit",
             "mean_corpuscular_volume", "mean_corpuscular_hemoglobin",
             "mean_corpuscular_hemoglobin_concentration", "insulin", "bmi",
@@ -968,7 +902,6 @@ def render_patient_history():
             "c_reactive_protein"
         ]
 
-        # Display each record
         for idx, full_row in enumerate(all_records):
             first_name = full_row[0]
             last_name = full_row[1]
@@ -976,7 +909,6 @@ def render_patient_history():
             confidence = full_row[-2]
             values = full_row[2:-2]
 
-            # Convert bytes to string if needed
             if isinstance(diagnosis, bytes):
                 diagnosis = diagnosis.decode('utf-8')
             if isinstance(first_name, bytes):
@@ -984,14 +916,12 @@ def render_patient_history():
             if isinstance(last_name, bytes):
                 last_name = last_name.decode('utf-8')
 
-            # Create expandable section
             col_expand, col_download = st.columns([5, 1])
-            
+
             with col_expand:
                 with st.expander(f"👤 {first_name} {last_name} - {diagnosis} ({confidence:.1f}%)", expanded=False):
-                    # Create two columns for better layout
                     info_col, table_col = st.columns([1, 2])
-                    
+
                     with info_col:
                         st.markdown(f"""
                             <div style="background: #f8fafc; padding: 1rem; border-radius: 10px; margin-bottom: 1rem;">
@@ -1011,7 +941,6 @@ def render_patient_history():
                             </div>
                         """, unsafe_allow_html=True)
 
-                        # Risk assessment
                         risk_level = classify_risk(diagnosis, confidence)
                         risk_colors = {
                             "Low": "#10b981",
@@ -1020,23 +949,21 @@ def render_patient_history():
                             "High": "#ef4444"
                         }
                         risk_color = risk_colors.get(risk_level, "#64748b")
-                        
+
                         st.markdown(f"""
                             <div style="background: {risk_color}22; padding: 0.75rem; border-radius: 8px; border-left: 4px solid {risk_color};">
                                 <div style="font-size: 12px; color: #64748b;">Risk Level</div>
                                 <div style="font-size: 14px; font-weight: 700; color: {risk_color};">{risk_level} Risk</div>
                             </div>
                         """, unsafe_allow_html=True)
-                    
+
                     with table_col:
                         st.markdown("**Clinical Parameters**")
-                        
-                        # Create dataframe for display
+
                         data_rows = []
                         for db_col, value in zip(db_columns, values):
                             param_name, unit = param_mapping[db_col]
-                            
-                            # Check if value is within normal range
+
                             normal_range = NORMAL_RANGES.get(FEATURE_ORDER[db_columns.index(db_col)])
                             status = "✅"
                             if normal_range:
@@ -1047,15 +974,14 @@ def render_patient_history():
                                     status = "🔴 High"
                                 else:
                                     status = "✅ Normal"
-                            
+
                             data_rows.append({
                                 "Parameter": param_name,
                                 "Value": f"{value:.2f}" if isinstance(value, float) else str(value),
                                 "Unit": unit,
                                 "Status": status
                             })
-                        
-                        # Display as table
+
                         df_display = pd.DataFrame(data_rows)
                         st.dataframe(
                             df_display,
@@ -1065,7 +991,6 @@ def render_patient_history():
                         )
 
             with col_download:
-                # Prepare JSON data
                 patient_json = {
                     "patient_info": {
                         "first_name": first_name,
@@ -1075,18 +1000,16 @@ def render_patient_history():
                     },
                     "clinical_parameters": {}
                 }
-                
+
                 for db_col, value in zip(db_columns, values):
                     param_name, unit = param_mapping[db_col]
                     patient_json["clinical_parameters"][param_name] = {
                         "value": float(value) if isinstance(value, (int, float)) else value,
                         "unit": unit
                     }
-                
-                # Convert to JSON string
+
                 json_str = json.dumps(patient_json, indent=2)
-                
-                # Download button
+
                 st.download_button(
                     label="📥",
                     data=json_str,
@@ -1099,9 +1022,8 @@ def render_patient_history():
     except Exception as e:
         st.error(f"⚠️ Failed to load patient history: {e}")
 
-
 # =========================================================
-# ROUTER (Already handled by session state at top)
+# FINAL ROUTER (ONLY ONE)
 # =========================================================
 page = st.session_state["page"]
 
@@ -1112,14 +1034,4 @@ elif page == "Patient Dashboard":
 elif page == "Model Metrics":
     render_model_metrics()
 elif page == "Patient History":
-        render_patient_history()
-
-def reload_page():
-    if page == "Home":
-        render_home()
-    elif page == "Patient Dashboard":
-        render_patient_dashboard()
-    elif page == "Model Metrics":
-        render_model_metrics()
-    elif page == "Patient History":
-        render_patient_history()
+    render_patient_history()
